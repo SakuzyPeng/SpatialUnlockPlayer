@@ -1,6 +1,6 @@
 # 用户手册
 
-[返回 README](../README.md)
+**简体中文** · [English](MANUAL.en.md) · [返回 README](../README.md)
 
 [README](../README.md) 负责让你构建、打开、放出第一声。这份手册接着往下讲：**每个操作和设置具体怎么工作**。代码怎么组织见[架构](ARCHITECTURE.md)。
 

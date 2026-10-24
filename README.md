@@ -1,12 +1,14 @@
 # SpatialUnlock Player
 
+**简体中文** · [English](README.en.md)
+
 一个 macOS 本地音视频播放器，让**普通双声道耳机**（3.5 mm、USB DAC、蓝牙）也走 Apple 原生的空间音频渲染路径——与 AirPods 使用同一个系统渲染器，不经过虚拟声卡，也不换用第三方 HRTF。
 
 > 它不是虚拟音频驱动，也不是系统级开关：只对本应用播放的内容生效。只播放 AVFoundation 支持的本地文件，没有 FFmpeg 回退、转码、网络播放、媒体库或字幕管理。
 
 **运行环境：Apple Silicon，macOS 27 或更新版本。当前验证版本为 macOS 27.0.1。**
 
-本文只讲它解决什么问题、怎么上手和构建。**每个操作和设置的具体行为见[用户手册](docs/MANUAL.md)**。
+本文只讲它解决什么问题、怎么上手和构建。**每个操作和设置的具体行为见[用户手册](docs/MANUAL.md)**（[English](docs/MANUAL.en.md)）。
 
 ## 目录
 
@@ -178,7 +180,7 @@ open SpatialUnlockPlayer.xcodeproj
 
 ## 文档
 
-- [用户手册](docs/MANUAL.md)：播放列表、播放模式、保存恢复、输出识别、高级设置、参数 EQ、PoseBridge 头部追踪
+- [用户手册](docs/MANUAL.md)（[English](docs/MANUAL.en.md)）：播放列表、播放模式、保存恢复、输出识别、高级设置、参数 EQ、PoseBridge 头部追踪
 - [架构](docs/ARCHITECTURE.md)：模块、渲染链、构建产物、诊断构建
 - [进程内对照](Tests/ROUTE_COMPARISON.md)：AirPods 与普通耳机的空间混音器／HAL 逐样本对照和后级增益定位
 - [USB PCM 对照](Tests/USB_AUDIO_COMPARISON.md)：HAL 之后的 USB 传输载荷、格式与约 12 dB 幅度差
