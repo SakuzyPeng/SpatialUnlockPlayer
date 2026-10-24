@@ -68,17 +68,20 @@ These results cover this machine, this system version, these devices and this ma
 
 ## Getting the app
 
-The source repository does not contain a built app. There are two ways to get one:
+The source repository does not contain a built app. You can get one in these ways:
 
-- **CI build.** After each push to `main`, a passing [GitHub Actions run](https://github.com/SakuzyPeng/SpatialUnlockPlayer/actions/workflows/ci.yml) offers an ad hoc app package under Artifacts on that run's page. It is kept for 7 days and requires signing in to GitHub.
+- **Release.** Open [Releases](https://github.com/SakuzyPeng/SpatialUnlockPlayer/releases) and download `SpatialUnlockPlayer-macos-arm64.zip` and its `.sha256` checksum file from the version's **Assets**. If no release is available yet, use a CI build.
+- **CI build.** Open [Actions → CI](https://github.com/SakuzyPeng/SpatialUnlockPlayer/actions/workflows/ci.yml), select a green successful run on `main`, then download the app artifact whose name starts with `SpatialUnlockPlayer-macos-arm64-ad-hoc-` under **Artifacts** at the bottom of the page. Signing in to GitHub is required; artifacts are kept for 7 days.
 - **Build it yourself.** See [Building from source](#building-from-source); one command exports an app you can double-click.
 
-The downloaded artifact unpacks to `SpatialUnlockPlayer-macos-arm64.zip` and its SHA-256 checksum file. Verify and extract in that directory:
+For a CI download, first unpack GitHub's outer artifact ZIP to get `SpatialUnlockPlayer-macos-arm64.zip` and its `.sha256` file. Keep the app ZIP and checksum in the same directory, then verify and extract:
 
 ```sh
 shasum -a 256 -c SpatialUnlockPlayer-macos-arm64.zip.sha256
 ditto -x -k SpatialUnlockPlayer-macos-arm64.zip .
 ```
+
+This produces `SpatialUnlock Player.app`, which you can move to Applications and open.
 
 The app is ad hoc signed and not notarised by Apple, so a downloaded copy may be blocked by Gatekeeper. Once you have confirmed it came from this repository, allow it as macOS prompts under System Settings → Privacy & Security, or build it yourself.
 

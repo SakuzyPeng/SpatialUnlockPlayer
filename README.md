@@ -68,17 +68,20 @@ flowchart LR
 
 ## 获取应用
 
-源码仓库不包含编译后的应用，有两种方式获得：
+源码仓库不包含编译后的应用，可通过以下方式获取：
 
-- **CI 构建**：每次推送 `main` 的 [GitHub Actions 运行](https://github.com/SakuzyPeng/SpatialUnlockPlayer/actions/workflows/ci.yml)通过后，在该次运行页面的 Artifacts 下载 ad hoc 应用包。保留 7 天，需要登录 GitHub。
+- **发布版本**：打开 [Releases](https://github.com/SakuzyPeng/SpatialUnlockPlayer/releases)，在对应版本的 **Assets** 下载 `SpatialUnlockPlayer-macos-arm64.zip` 和同名 `.sha256` 校验文件。尚无发布版本时，可使用 CI 构建。
+- **CI 构建**：打开 [Actions → CI](https://github.com/SakuzyPeng/SpatialUnlockPlayer/actions/workflows/ci.yml)，选择 `main` 上绿色通过的运行，在页面底部 **Artifacts** 点击名称以 `SpatialUnlockPlayer-macos-arm64-ad-hoc-` 开头的应用包下载。需要登录 GitHub，产物保留 7 天。
 - **自己构建**：按[从源码构建](#从源码构建)，一条命令导出可双击的应用。
 
-下载的 Artifact 解开后有 `SpatialUnlockPlayer-macos-arm64.zip` 和它的 SHA-256 校验文件。在同一目录校验并解压：
+从 CI 下载时，先解开 GitHub 提供的外层 Artifact ZIP，得到 `SpatialUnlockPlayer-macos-arm64.zip` 和它的 `.sha256` 文件。将应用 ZIP 与校验文件放在同一目录，校验后解压：
 
 ```sh
 shasum -a 256 -c SpatialUnlockPlayer-macos-arm64.zip.sha256
 ditto -x -k SpatialUnlockPlayer-macos-arm64.zip .
 ```
+
+解压得到 `SpatialUnlock Player.app`，可移到“应用程序”目录后打开。
 
 应用使用 ad hoc 签名，未经 Apple 公证，下载的版本可能被 Gatekeeper 拦截。确认来源是本仓库后，可按 macOS 提示在“系统设置 → 隐私与安全性”中允许打开。
 
