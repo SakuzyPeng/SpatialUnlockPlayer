@@ -36,6 +36,7 @@ fileGroups:
   - project.yml
   - build.sh
   - README.md
+  - docs
   - LICENSE
   - THIRD_PARTY_NOTICES.md
   - LICENSES
