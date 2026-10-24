@@ -70,6 +70,17 @@ enum DiagnosticRunner {
                         } catch { return false }
                     }
                 case "volume": model.volume = Float(step["value"] as? Double ?? 0.1)
+                case "eqImport":
+                    guard let path = step["path"] as? String else { throw error("Missing EQ path") }
+                    if step["expectFailure"] as? Bool == true {
+                        let previous = model.equalizer.preset
+                        do { try model.equalizer.importPreset(URL(fileURLWithPath: path)); throw error("Invalid EQ unexpectedly imported") }
+                        catch let failure as EQImportError {
+                            guard previous == model.equalizer.preset else { throw error("Failed EQ changed current preset") }
+                            emit(["expectedEQError": failure.localizedDescription])
+                        }
+                    } else { try model.equalizer.importPreset(URL(fileURLWithPath: path)) }
+                case "eqEnabled": model.equalizer.setEnabled(step["value"] as? Bool ?? false)
                 case "poseStart":
                     model.headTracking.portText = String(step["port"] as? Int ?? 9000)
                     model.headTracking.sourceFilter = step["source"] as? String ?? ""

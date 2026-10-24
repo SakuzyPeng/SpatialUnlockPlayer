@@ -2,6 +2,35 @@
 
 产品没有测试依赖。开发验证使用本机现有 Python、ffmpeg 和测试媒体；不复制用户的音乐文件。
 
+## 正式参数 EQ
+
+```sh
+zsh Tests/equalizer_test.sh
+python3 Tests/equalizer_playback_test.py
+python3 Tests/posebridge_integration_test.py --eq 'Tests/Fixtures/Sony MDR-MV1 ParametricEq.txt'
+```
+
+首条运行配置解析／事务性导入／持久化测试，并使用本机已有 NumPy 分析正式 C DSP 的脉冲响应。参考使用独立的模拟原型加双线性变换，不复用产品 biquad 递推；覆盖 44.1／48／96 kHz、PK／LSC／HSC／完整 Sony 曲线、两种 PCM 布局、声道隔离、重复渲染、reset、静音尾音、整体旁路、20 ms 淡化、快速更新和并发配置／实例生命周期。
+
+第二条须先构建 Diagnostics 并具备已有测试媒体；使用前一条由正式 Swift 解析器生成的 Sony 参数，验证正常链接的正式 EQ 处理能到达本进程 HAL 输出，随后运行实际应用的 EQ 开关、定位、切歌、模式、设备恢复、导入失败和重启恢复场景。第三条用真实 PoseBridge 模拟器验证 EQ 与外部头追同时工作，关闭外部头追后 EQ 继续生效；结果单独写入 `Artifacts/posebridge-integration-eq`。
+
+结果保存于 `Artifacts/equalizer`。应用集成测试共用独立 Regression 偏好域，与其他播放、持久化、PoseBridge 脚本须顺序运行；测试不改变日常列表和 EQ 设置。纯 DSP 检查和 Xcode 构建复用已有目录／共享模块缓存。
+
+## EQ 接入点探针
+
+```sh
+python3 Tests/eq_probe_test.py
+python3 Tests/eq_probe_test.py --analyze-only
+```
+
+这是独立的命令行 AVPlayer 实验，不构建／替换应用，不读写播放器偏好，不改变系统默认输出。默认指定普通 3.5 mm 耳机；可传 `--output DEVICE_UID`。`build/tests/eq-probe/eq-probe --devices` 可列出当前输出。播放音量为 2%，会短暂播放测试信号和本机已有音乐。
+
+探针复用正式 `SpatialShim.c` 和 `HeadPose.c`，只在测试动态库中扩展渲染观察器，并观察本进程的 HAL 输出回调；不注入正在运行的播放器。依次测量旁路、−6.02 dB 增益、1800 Hz／Q=1／−12 dB 峰值 EQ，以及保持 EQ 时的 +45° 姿态。实时回调不写文件，结束后保存数值谱分析。滤波器仅支持本轮双声道 Float32，普通多声道 tap 的 `unsupported` 表示探针没有处理该格式，不表示 AVPlayer 不支持它。
+
+用 `--only pcm51-on-notify` 等名称选择场景，`--skip-build` 复用小型探针二进制。生成或复用短 PCM，不复制 APAC／Atmos；音乐路径从已有 `Artifacts/smoke.json` 和 `regression.json` 读取，缺少这些本机素材时跳过对应场景。所有生成物位于 `build/tests/eq-probe` 与 `Artifacts/eq-probe`。
+
+`summary.json` 区分处理验证、已知格式失败和仅观察格式的场景，不能把整个场景数称为 EQ 全部通过。多声道音乐跨时间片的响度不同，不使用它们的前后时段电平差证明滤波频响；精确频响和 HAL 传递验证使用稳定测试信号。详细结论及混合总线 tap 的头追限制见 [验证记录](VALIDATION.md)。
+
 ## PoseBridge OSC 与渲染
 
 在仓库根目录运行纯协议与实际 Apple Audio Unit 检查：

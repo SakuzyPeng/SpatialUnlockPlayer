@@ -3,7 +3,7 @@ set -eu
 cd "${0:A:h:h}"
 mkdir -p build/tests
 xcrun clang -std=c11 -O2 -Wall -Wextra -Werror -dynamiclib \
-  Sources/SpatialShim/SpatialShim.c Sources/SpatialShim/HeadPose.c \
+  Sources/SpatialShim/SpatialShim.c Sources/SpatialShim/HeadPose.c Sources/SpatialShim/Equalizer.c \
   -framework AudioToolbox -framework CoreAudio -o build/tests/libSpatialShim.dylib
 xcrun clang -std=c11 -O2 Tests/head_pose_test.c \
   -L build/tests -lSpatialShim -framework AudioToolbox -framework CoreAudio \

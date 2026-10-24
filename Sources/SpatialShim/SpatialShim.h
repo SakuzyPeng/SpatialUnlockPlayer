@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <CoreAudio/CoreAudio.h>
 #include "HeadPose.h"
+#include "Equalizer.h"
 
 typedef struct {
     uint32_t deviceID;

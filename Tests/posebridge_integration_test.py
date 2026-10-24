@@ -15,12 +15,16 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--app", type=Path, default=ROOT / "build/Products/Diagnostics/SpatialUnlock Player.app")
 parser.add_argument("--posebridge", type=Path, default=ROOT.parents[1] / "rust/PoseBridge/target/release/posebridge")
 parser.add_argument("--output", default="BuiltInHeadphoneOutputDevice")
+parser.add_argument("--eq", type=Path, help="Also verify spatial EQ while receiving real OSC poses")
 args = parser.parse_args()
 binary = args.app / "Contents/MacOS/SpatialUnlockPlayer"
-artifacts = ROOT / "Tests/Artifacts/posebridge-integration"
+artifacts = ROOT / ("Tests/Artifacts/posebridge-integration-eq" if args.eq else "Tests/Artifacts/posebridge-integration")
 artifacts.mkdir(parents=True, exist_ok=True)
 
 def tone():
+    existing = ROOT / "Tests/Artifacts/posebridge-integration/center-5.1.wav"
+    if args.eq and existing.exists():
+        return existing
     path = artifacts / "center-5.1.wav"
     sr = 48000
     block = array.array("h")
@@ -135,6 +139,13 @@ for fmt in ["quaternion", "euler"]:
         {"action": "poseStop"},
         {"action": "clear"}
     ]
+    if args.eq:
+        steps.insert(0, {"action": "eqImport", "path": str(args.eq.resolve())})
+        for step in steps:
+            if step.get("action") == "assert" and step.get("expect", {}).get("poseFresh") is True:
+                step["expect"].update(eqApplied=True, eqError=0)
+            if step.get("action") == "assert" and step.get("expect", {}).get("poseListening") is False and step.get("expect", {}).get("minPoseRestored"):
+                step["expect"].update(eqApplied=True, eqError=0)
     reports.append(run(fmt, steps, port, fmt))
 
 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as occupied:

@@ -1,4 +1,5 @@
 #include "HeadPose.h"
+#include "Equalizer.h"
 #include <AudioToolbox/AudioToolbox.h>
 #include <math.h>
 #include <sched.h>
@@ -21,6 +22,7 @@ typedef struct {
     _Atomic bool overridden;
     _Atomic uint64_t appliedVersion;
     QuaternionMailbox nativePose;
+    SpatialEQContext *equalizer;
 } Mixer;
 
 static Mixer mixers[MaxMixers];
@@ -110,13 +112,17 @@ static OSStatus apply(AudioUnit unit, Mixer *m, const float q[4], uint64_t versi
 }
 static OSStatus beforeRender(void *context, AudioUnitRenderActionFlags *flags,
                             const AudioTimeStamp *time, UInt32 bus, UInt32 frames, AudioBufferList *data) {
-    (void)time; (void)bus; (void)frames; (void)data;
-    if (!flags || !(*flags & kAudioUnitRenderAction_PreRender)) return noErr;
+    (void)bus;
+    if (!flags || !(*flags & (kAudioUnitRenderAction_PreRender | kAudioUnitRenderAction_PostRender))) return noErr;
     Mixer *m = context;
     AudioUnit unit = (AudioUnit)atomic_load_explicit(&m->unit, memory_order_acquire);
     if ((uintptr_t)unit <= 1 || atomic_load_explicit(&m->closing, memory_order_acquire)) return noErr;
     atomic_fetch_add_explicit(&m->users, 1, memory_order_acquire);
     if (atomic_load_explicit(&m->closing, memory_order_acquire)) { releaseMixer(m); return noErr; }
+    if (*flags & kAudioUnitRenderAction_PostRender) {
+        SpatialEQProcess(m->equalizer, flags, time, frames, data);
+        releaseMixer(m); return noErr;
+    }
     atomic_fetch_add_explicit(&renderCallbacks, 1, memory_order_relaxed);
     float q[4]; uint64_t version;
     if (atomic_load_explicit(&enabled, memory_order_acquire)) {
@@ -138,8 +144,14 @@ static OSStatus beforeRender(void *context, AudioUnitRenderActionFlags *flags,
 }
 static OSStatus poseProperty(AudioUnit unit, AudioUnitPropertyID property, AudioUnitScope scope,
                              AudioUnitElement element, const void *data, UInt32 size) {
-    if (property != HeadQuaternion || scope != kAudioUnitScope_Global || element != 0 || size != 16 || !data)
-        return AudioUnitSetProperty(unit, property, scope, element, data, size);
+    if (property != HeadQuaternion || scope != kAudioUnitScope_Global || element != 0 || size != 16 || !data) {
+        OSStatus result = AudioUnitSetProperty(unit, property, scope, element, data, size);
+        if (!result && (property == kAudioUnitProperty_StreamFormat || property == kAudioUnitProperty_MaximumFramesPerSlice)) {
+            Mixer *m = acquireMixer(unit);
+            if (m) { SpatialEQRefresh(m->equalizer, unit); releaseMixer(m); }
+        }
+        return result;
+    }
     Mixer *m = acquireMixer(unit);
     if (!m) return AudioUnitSetProperty(unit, property, scope, element, data, size);
     // Preserve Apple's most recent orientation even while replacing it, so
@@ -168,7 +180,7 @@ static OSStatus poseInitialize(AudioUnit unit) {
     OSStatus result = AudioUnitInitialize(unit);
     if (result) return result;
     Mixer *existing = acquireMixer(unit);
-    if (existing) { releaseMixer(existing); return result; }
+    if (existing) { SpatialEQRefresh(existing->equalizer, unit); releaseMixer(existing); return result; }
     AudioComponentDescription description = {0};
     AudioComponent component = AudioComponentInstanceGetComponent(unit);
     if (!component || AudioComponentGetDescription(component, &description) ||
@@ -187,6 +199,7 @@ static OSStatus poseInitialize(AudioUnit unit) {
             original[0] = original[1] = original[2] = 0; original[3] = 1;
         }
         writeQuaternion(&m->nativePose, original);
+        m->equalizer = SpatialEQCreate(unit);
         atomic_store_explicit(&m->unit, (uintptr_t)unit, memory_order_release);
         OSStatus notify = AudioUnitAddRenderNotify(unit, beforeRender, m);
         atomic_store_explicit(&m->notified, notify == noErr, memory_order_release);
@@ -212,6 +225,7 @@ static OSStatus poseDispose(AudioComponentInstance instance) {
     while (atomic_load_explicit(&m->users, memory_order_acquire)) sched_yield();
     OSStatus result = AudioComponentInstanceDispose(instance);
     if (!result) {
+        SpatialEQDestroy(m->equalizer); m->equalizer = NULL;
         atomic_fetch_sub_explicit(&mixerCount, 1, memory_order_relaxed);
         atomic_store_explicit(&m->unit, 0, memory_order_release);
     } else {
@@ -222,9 +236,27 @@ static OSStatus poseDispose(AudioComponentInstance instance) {
     }
     return result;
 }
+static OSStatus poseReset(AudioUnit unit, AudioUnitScope scope, AudioUnitElement element) {
+    OSStatus result = AudioUnitReset(unit, scope, element);
+    if (!result) {
+        Mixer *m = acquireMixer(unit);
+        if (m) { SpatialEQResetContext(m->equalizer); releaseMixer(m); }
+    }
+    return result;
+}
+static OSStatus poseUninitialize(AudioUnit unit) {
+    OSStatus result = AudioUnitUninitialize(unit);
+    if (!result) {
+        Mixer *m = acquireMixer(unit);
+        if (m) { SpatialEQResetContext(m->equalizer); releaseMixer(m); }
+    }
+    return result;
+}
 #define INTERPOSE(replacement, original) \
 __attribute__((used)) static struct {const void *newFunction; const void *oldFunction;} binding_##replacement \
 __attribute__((section("__DATA,__interpose"))) = {(const void *)&replacement, (const void *)&original};
 INTERPOSE(poseProperty, AudioUnitSetProperty)
 INTERPOSE(poseInitialize, AudioUnitInitialize)
 INTERPOSE(poseDispose, AudioComponentInstanceDispose)
+INTERPOSE(poseReset, AudioUnitReset)
+INTERPOSE(poseUninitialize, AudioUnitUninitialize)

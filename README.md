@@ -34,6 +34,14 @@
 
 切换输出或模式会重建播放链路并恢复进度与播放状态。输出设备离开设备列表或变为不可用时暂停，避免突然改用其他输出。
 
+### 参数 EQ
+
+点击音量旁的“EQ”，选择“导入…”载入 AutoEQ / Equalizer APO 参数文本。支持 `Preamp`、`ON/OFF` 和 `PK`／`LSC`／`HSC`，最多 32 段。导入成功后自动启用；面板显示前级、只读参数和包含前级的总响应曲线，主开关可随时旁路。
+
+全局保存一份配置和开关，重启后恢复，不依赖原文件的位置。导入失败会显示行号与原因，并保留当前配置。文本须为 UTF-8、小于 64 KiB，支持空行、`#`／`;` 注释和不同换行符。
+
+首版 EQ 仅在空间音频渲染路径生效。关闭空间化或当前路径没有空间渲染器时，面板会显示未应用；配置与开关仍保留。EQ 在空间化和头追之后处理左右声道，采用文件中的前级值，不额外归一化。切换配置和开关有约 20 ms 的平滑过渡。未播放或无法取得输出格式时，曲线标为 48 kHz 预览。
+
 ### PoseBridge 头部追踪
 
 点击工具栏的“头部追踪”，开启“接收外部姿态”。默认监听 `127.0.0.1:9000`，支持 PoseBridge **OSC 3** 的四元数和欧拉角输出。播放器不连接或配置传感器；USB／蓝牙采集、安装方向和设备重连由外部 PoseBridge 管理。
@@ -56,7 +64,7 @@
 
 ### 已知限制
 
-- 使用系统 AVFoundation 支持的本地格式。没有 FFmpeg 回退、转码、网络播放、媒体库、均衡器或字幕管理。
+- 使用系统 AVFoundation 支持的本地格式。没有 FFmpeg 回退、转码、网络播放、媒体库或字幕管理。
 - 本机测试的 16／24 声道 APAC 在明确关闭空间化时，原生 AVPlayer 返回 `fmt?` 格式错误。遇到此类 APAC 文件，应用会保留位置并提示切回自动／强制模式；不会暗中忽略“关闭”。
 - `spen` / `spmd` 是私有实现细节，系统更新后需要重新验证。界面的模式表示应用播放策略，不等于控制中心已把设备识别成 AirPods。
 - 普通耳机可使用 PoseBridge 提供的姿态，但不会因此获得 AirPods 的内置传感器或个性化配置。本应用没有安装虚拟驱动，也没有独立 PCM 中转或后台空间渲染器。
@@ -103,9 +111,10 @@ xcrun swift -module-cache-path "$HOME/Library/Developer/Xcode/DerivedData/Module
 - `PlayerModel` 管理单个 AVPlayer、多份命名列表、加载、定位及切换；浏览列表与播放列表分别记录。`PlaybackOrder` 独立决定自动续播、手动切歌和随机历史；`PlaybackSession` v2 保存列表集合并兼容迁移 v1。generation 与 seek serial 拒绝旧异步回调；音频输出始终由 `audioOutputDeviceUniqueID` 指定。
 - `AudioDeviceCatalog` 枚举输出，并监听设备列表、默认输出、存活状态和流配置。保存的是 UID，不是易变的 AudioObjectID。
 - `SpatialShimSetConfiguration(deviceID, enabled)` 用单个原子状态设置目标，仅拦截该设备的 `AudioObjectHasProperty`、`AudioObjectGetPropertyDataSize`、`AudioObjectGetPropertyData`。原始能力查询从动态库内调用原始 API，避免把自己的伪装误认为硬件能力。
-- 音频解码和空间渲染由 AVPlayer / MediaToolbox / AudioToolbox 完成，兼容层不处理音频样本。
+- 音频解码和空间渲染由 AVPlayer / MediaToolbox / AudioToolbox 完成；参数 EQ 在本进程 AUSpatialMixer 的 PostRender 中处理最终双声道 PCM，不增加音频中转队列。
 - PoseBridge OSC 在独立串行队列上解码、校验时效及处理来源／会话变化；按 `posebridge.yxz.v1` 还原物理旋转，再生成世界到头部的四元数。回正、会话对齐不修改源数据或设备配置。
 - `HeadPose.c` 仅跟踪本进程的 Apple AUSpatialMixer，替换其朝向设置，并在渲染前通知中读取原子姿态快照。因此普通耳机不依赖 AirPods 的系统头追回调。音频线程不解析网络、不分配内存或写日志；混音器销毁时注销通知。
+- `Equalizer.c` 在非实时线程按实际采样率生成系数，通过三个带读者计数的槽发布不可变快照；实时线程做有界读取，独立保存每个实例／声道的双精度滤波状态。定位、重建、采样率变化和 AudioUnit reset 清理历史，静音时保留应有的滤波尾音。格式或参数不可用时旁路整个 EQ，并暴露实际生效状态。
 
 ## 诊断构建
 

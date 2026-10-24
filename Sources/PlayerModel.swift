@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 final class PlayerModel: ObservableObject {
     let devices = AudioDeviceCatalog()
     let headTracking: HeadTrackingModel
+    let equalizer: EqualizerModel
     @Published private(set) var playlists: [Playlist]
     @Published private(set) var browsedPlaylistID: UUID
     @Published private(set) var playingPlaylistID: UUID?
@@ -70,13 +71,18 @@ final class PlayerModel: ObservableObject {
         self.browsedPlaylistID = initial.id
         self.defaults = defaults
         self.headTracking = HeadTrackingModel(defaults: defaults)
+        self.equalizer = EqualizerModel(defaults: defaults)
         self.volume = defaults.object(forKey: "volume") == nil ? 0.1 : min(1, max(0, defaults.float(forKey: "volume")))
         self.spatialMode = SpatialMode(rawValue: defaults.string(forKey: "spatialMode") ?? "") ?? .automatic
         let saved = defaults.string(forKey: "outputUID") ?? "system"
         self.outputSelection = saved == "system" || devices.devices.contains(where: { $0.uid == saved }) ? saved : "system"
         activeDevice = selectedOutput
         policy = SpatialPolicy.resolve(mode: spatialMode, device: activeDevice)
-        updateHeadTrackingPolicy()
+        equalizer.playbackContext = { [weak self] in
+            guard let self else { return .init() }
+            return .init(hasItem: self.player?.currentItem != nil, playing: self.isPlaying, loading: self.isLoading)
+        }
+        updateRenderingPolicy()
         devices.onChange = { [weak self] in self?.devicesChanged() }
         if let session = PlaybackSession.load(from: defaults) {
             playlists = session.playlists
@@ -279,6 +285,7 @@ final class PlayerModel: ObservableObject {
         seekSerial &+= 1
         let serial = seekSerial, ticket = generation
         isSeeking = true; position = target
+        SpatialEQReset()
         saveSession()
         player.currentItem?.cancelPendingSeeks()
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] finished in
@@ -286,6 +293,7 @@ final class PlayerModel: ObservableObject {
                 guard let self, let player, self.generation == ticket, self.seekSerial == serial, self.player === player else { return }
                 self.isSeeking = false
                 if finished {
+                    SpatialEQReset()
                     let time = player.currentTime().seconds
                     if time.isFinite { self.position = time }
                     if self.wantsToPlay { player.play() } else { player.pause() }
@@ -309,7 +317,7 @@ final class PlayerModel: ObservableObject {
     }
     private func updateRoute(rebuildCurrent: Bool) {
         policy = SpatialPolicy.resolve(mode: spatialMode, device: selectedOutput)
-        updateHeadTrackingPolicy()
+        updateRenderingPolicy()
         if rebuildCurrent, currentEntry != nil { rebuild(at: position, autoplay: wantsToPlay) }
         else { activeDevice = selectedOutput; SpatialShimSetConfiguration(0, false) }
     }
@@ -320,12 +328,13 @@ final class PlayerModel: ObservableObject {
         guard nextDevice != activeDevice || nextPolicy != policy else { objectWillChange.send(); return }
         let removed = activeDevice.map { old in !devices.devices.contains(where: { $0.uid == old.uid }) } ?? false
         policy = nextPolicy
-        updateHeadTrackingPolicy()
+        updateRenderingPolicy()
         if removed, currentEntry != nil {
             invalidatePlayback()
             activeDevice = nextDevice; wantsToPlay = false; isLoading = false; isSeeking = false
             SpatialShimSetConfiguration(0, false)
             headTracking.setRenderingAllowed(false)
+            equalizer.setRenderingAllowed(false)
             errorMessage = "输出设备已断开，播放已暂停。"
         } else { updateRoute(rebuildCurrent: true) }
     }
@@ -344,7 +353,7 @@ final class PlayerModel: ObservableObject {
         }
         activeDevice = device
         policy = SpatialPolicy.resolve(mode: spatialMode, device: device)
-        updateHeadTrackingPolicy()
+        updateRenderingPolicy()
         SpatialShimSetConfiguration(device.id, policy.useShim)
         let asset = AVURLAsset(url: entry.url)
         timeoutTask = Task { [weak self] in
@@ -457,6 +466,7 @@ final class PlayerModel: ObservableObject {
         saveSession()
     }
     private func invalidatePlayback() {
+        SpatialEQReset()
         generation &+= 1; seekSerial &+= 1
         loadTask?.cancel(); loadTask = nil; timeoutTask?.cancel(); timeoutTask = nil
         player?.pause()
@@ -472,6 +482,7 @@ final class PlayerModel: ObservableObject {
     func shutdown() {
         shuttingDown = true
         headTracking.shutdown()
+        equalizer.shutdown()
         pause()
         invalidatePlayback(); devices.shutdown(); SpatialShimSetConfiguration(0, false)
     }
@@ -495,12 +506,14 @@ final class PlayerModel: ObservableObject {
                 "hasVideo": metadata.hasVideo, "sourceAudio": metadata.audioDescription,
                 "error": errorMessage ?? "", "errorDetails": errorDetails]
         result.merge(headTracking.diagnosticSnapshot()) { _, new in new }
+        result.merge(equalizer.diagnosticSnapshot()) { _, new in new }
         #if SPATIAL_DIAGNOSTICS
         result["completedItemCount"] = completedItemCount
         #endif
         return result
     }
-    private func updateHeadTrackingPolicy() {
+    private func updateRenderingPolicy() {
         headTracking.setRenderingAllowed(policy.allowSpatialization && selectedOutput?.channels == 2)
+        equalizer.setRenderingAllowed(policy.allowSpatialization && selectedOutput?.channels == 2)
     }
 }

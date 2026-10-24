@@ -270,6 +270,7 @@ struct PlayerView: View {
                 .fixedSize().menuStyle(.borderlessButton).accessibilityIdentifier("playbackMode")
                 .help("播放模式：\(model.playbackMode.title)")
                 Spacer(minLength: 10)
+                EqualizerControl(model: model.equalizer)
                 HStack(spacing: 7) {
                     Image(systemName: model.volume == 0 ? "speaker.slash" : "speaker.wave.2").foregroundStyle(.secondary)
                     Slider(value: $model.volume, in: 0...1).frame(width: 105).accessibilityLabel("音量")
