@@ -15,7 +15,7 @@
 - [获取应用](#获取应用)
 - [上手五步](#上手五步)
 - [空间音频模式怎么选](#空间音频模式怎么选)
-- [让普通耳机与 AirPods 一致](#让普通耳机与-airpods-一致)
+- [让普通耳机与 AirPods 的渲染一致](#让普通耳机与-airpods-的渲染一致)
 - [输出设备](#输出设备)
 - [常见问题](#常见问题)
 - [已知限制](#已知限制)
@@ -28,11 +28,12 @@
 
 macOS 只给它认作原生兼容的耳机（如 AirPods）打开耳机空间渲染路径，普通耳机默认不走这条路径。本应用在自己的进程内，只对选定的输出设备回答“支持空间音频”的 CoreAudio 能力查询，然后照常交给 AVPlayer 播放；解码和空间渲染仍完全由系统完成。
 
-这条路径和 AirPods 到底差多少，在本机用 AirPods Max 与 FIIO KA11 做了逐样本对照：
+这条路径和 AirPods 到底差多少，在本机用 AirPods Max 与 FIIO KA11（均为 USB 连接）做了逐样本对照，观察点从空间混音器一直到 USB 传输：
 
 - **空间渲染结果相同**：HRTF 和头部朝向相同时，两条路径的空间混音器输出逐位相同。低电平与高峰值 5.1、Atmos、APAC 16 声道均已验证。
 - **差异出在后级**：空间混音器之后还有响度压缩与真峰值限幅。AirPods 路径在这两级前后各设置 −20／+20 dB，普通耳机路径是 0／0 dB；压缩和限幅是非线性的，两种设置对同一信号的作用不同。
 - **可以对齐**：把这对增益也设为 −20／+20 dB，本进程交给 HAL 的 PCM 与 AirPods 逐位相同。双向交换参数都得到相同结果，确认了因果关系。
+- **HAL 之后仍有差异**：同步抓取 USB 传输后发现，即使 HAL 逐位相同，两设备的 USB PCM 仍不同。AirPods 在 HAL 之后约衰减 12 dB，样本容器和量化也不同；关闭空间音频时同样存在，与兼容层和余量设置无关。
 
 ```mermaid
 flowchart LR
@@ -41,7 +42,8 @@ flowchart LR
     G1 --> D[响度压缩<br/>真峰值限幅]
     D --> G2[后置增益]
     G2 --> V[播放器音量]
-    V --> H[HAL 输出]
+    V --> H[本进程 HAL 输出]
+    H --> U[系统／驱动后级<br/>USB 载荷]
 ```
 
 | | AirPods（原生） | 普通耳机（默认） | 普通耳机 + 余量 20 dB |
@@ -49,8 +51,9 @@ flowchart LR
 | 前置／后置增益 | −20／+20 dB | 0／0 dB | −20／+20 dB |
 | 空间混音器 PCM（同 HRTF、同朝向） | 基准 | 逐位相同 | 逐位相同 |
 | HAL PCM | 基准 | 不同 | 逐位相同 |
+| USB PCM | 基准 | 不同 | 不同：AirPods 一侧约 −12 dB，量化不同 |
 
-结论覆盖本机、这个系统版本、这些设备和素材，指空间混音器与本进程 HAL 一致。后续同步抓取发现，即使 HAL 相同，两设备的 USB PCM 仍不同：AirPods 在 HAL 之后约衰减 12 dB，且存在量化差异；因此不能外推为传输载荷或耳机声学输出相同。方法与数值见[进程内对照](Tests/ROUTE_COMPARISON.md)和[USB PCM 对照](Tests/USB_AUDIO_COMPARISON.md)。
+结论覆盖本机、这个系统版本、这些设备和素材。一致的是空间混音器和本进程 HAL 两层；USB 载荷不同，耳机内部 DSP、DAC 和声学输出没有测量，因此不能外推为最终听到的声音相同。方法与数值见[进程内对照](Tests/ROUTE_COMPARISON.md)和[USB PCM 对照](Tests/USB_AUDIO_COMPARISON.md)。
 
 ## 能用它做什么
 
@@ -63,7 +66,17 @@ flowchart LR
 
 ## 获取应用
 
-源码仓库不包含编译后的应用。如果 [Releases](https://github.com/SakuzyPeng/SpatialUnlockPlayer/releases) 页面提供了打包好的版本，下载后放到任意位置双击即可；否则按[从源码构建](#从源码构建)自己编译，一条命令就能导出可双击的应用。
+源码仓库不包含编译后的应用，有两种方式获得：
+
+- **CI 构建**：每次推送 `main` 的 [GitHub Actions 运行](https://github.com/SakuzyPeng/SpatialUnlockPlayer/actions/workflows/ci.yml)通过后，在该次运行页面的 Artifacts 下载 ad hoc 应用包。保留 7 天，需要登录 GitHub。
+- **自己构建**：按[从源码构建](#从源码构建)，一条命令导出可双击的应用。
+
+下载的 Artifact 解开后有 `SpatialUnlockPlayer-macos-arm64.zip` 和它的 SHA-256 校验文件。在同一目录校验并解压：
+
+```sh
+shasum -a 256 -c SpatialUnlockPlayer-macos-arm64.zip.sha256
+ditto -x -k SpatialUnlockPlayer-macos-arm64.zip .
+```
 
 应用使用 ad hoc 签名，未经 Apple 公证，下载的版本可能被 Gatekeeper 拦截。确认来源是本仓库后，可按 macOS 提示在“系统设置 → 隐私与安全性”中允许打开。
 
@@ -73,7 +86,7 @@ flowchart LR
 2. `⌘O` 打开文件，或把文件拖进窗口。双击列表条目（或选中后按 Return）开始播放。
 3. 在输出菜单选择你的耳机，或保留“系统默认”。
 4. 空间音频模式保持“自动”。底部状态应显示“普通耳机兼容模式”；如果显示“系统原生播放”，改为“强制耳机空间音频”。
-5. 想进一步接近 AirPods 的结果，点模式旁的滑块图标打开高级设置，见[下一节](#让普通耳机与-airpods-一致)。
+5. 想进一步接近 AirPods 的结果，点模式旁的滑块图标打开高级设置，见[下一节](#让普通耳机与-airpods-的渲染一致)。
 
 空格播放／暂停，`⌘←` / `⌘→` 切换上一项／下一项，`⌘⌥←` / `⌘⌥→` 后退／前进 10 秒。更多操作见[用户手册](docs/MANUAL.md#打开与播放)。
 
@@ -89,7 +102,7 @@ flowchart LR
 
 **不确定选哪个？** 保持“自动”。如果用的是 USB DAC 或蓝牙耳机，而状态显示“系统原生播放”，说明设备没有把自己报告为耳机，改用“强制耳机空间音频”。设备识别规则见[用户手册](docs/MANUAL.md#输出和空间音频)。
 
-## 让普通耳机与 AirPods 一致
+## 让普通耳机与 AirPods 的渲染一致
 
 高级设置的两个选项，正好对应对照实验中的两个变量：
 
@@ -99,6 +112,8 @@ flowchart LR
 | **HRTF 模式** | 请求通用或系统已有的个性化 HRTF，不修改全局设置 | 与 AirPods 实际使用的一致：系统里建过个性化空间音频档案就选**个性化**，否则选通用 |
 
 两项初始都为“系统决定”，即不覆盖系统行为。设置按实际输出设备分别保存，“恢复此设备的系统设置”可一键还原。个性化档案未实际启用时，面板会明确显示仍在使用通用 HRTF。详见[用户手册](docs/MANUAL.md#空间音频高级设置)。
+
+对齐的范围止于本进程交给 HAL 的输出。AirPods 在 HAL 之后约 −12 dB 的数字衰减不在本应用控制范围内，应用也不做补偿；不建议据此手动加减 12 dB，主机传输幅度不能单独决定耳机内部处理、音量和最终声压。见[USB PCM 对照](Tests/USB_AUDIO_COMPARISON.md#结论边界与产品含义)。
 
 ## 输出设备
 
@@ -159,11 +174,14 @@ open SpatialUnlockPlayer.xcodeproj
 
 工程配置以 `project.yml` 为准，生成的 `.xcodeproj` 不提交到 Git；调整 target、构建设置或 scheme 时修改 YAML，再重新生成。签名、动态库嵌入、配置差异和图标生成见[架构](docs/ARCHITECTURE.md#构建产物)。
 
+`zsh Scripts/ci.sh` 在本机运行与 CI 相同的检查和打包（另需 `Tests/requirements-ci.txt` 中的 Python 依赖），见[持续集成](Tests/README.md#持续集成)。
+
 ## 文档
 
 - [用户手册](docs/MANUAL.md)：播放列表、播放模式、保存恢复、输出识别、高级设置、参数 EQ、PoseBridge 头部追踪
 - [架构](docs/ARCHITECTURE.md)：模块、渲染链、构建产物、诊断构建
-- [输出对照实验](Tests/ROUTE_COMPARISON.md)：AirPods 与普通耳机的逐样本对照和 HAL 差异定位
+- [进程内对照](Tests/ROUTE_COMPARISON.md)：AirPods 与普通耳机的空间混音器／HAL 逐样本对照和后级增益定位
+- [USB PCM 对照](Tests/USB_AUDIO_COMPARISON.md)：HAL 之后的 USB 传输载荷、格式与约 12 dB 幅度差
 - [验证记录](Tests/VALIDATION.md)：各功能的验收范围与结果
 - [测试说明](Tests/README.md)：回归脚本、探针与复现命令
 - [持续集成](Tests/README.md#持续集成)：GitHub Actions 检查范围、ad hoc 应用包和日志

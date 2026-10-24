@@ -29,7 +29,7 @@ flowchart TD
     M --> H[本进程 HAL 输出]
 ```
 
-参数 EQ 和头追都挂在空间混音器上，位于这条链的起点；处理余量设置的是两个 PreGain。各级数值与实测见[输出对照实验](../Tests/ROUTE_COMPARISON.md)。
+参数 EQ 和头追都挂在空间混音器上，位于这条链的起点；处理余量设置的是两个 PreGain。各级数值与实测见[进程内对照](../Tests/ROUTE_COMPARISON.md)。HAL 之后的系统／驱动转换不在本进程内，应用不观察也不修改；实测差异见 [USB PCM 对照](../Tests/USB_AUDIO_COMPARISON.md)。
 
 ## 构建产物
 
