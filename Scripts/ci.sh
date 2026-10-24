@@ -43,15 +43,5 @@ run_check diagnostics xcrun xcodebuild -quiet -project SpatialUnlockPlayer.xcode
   -scheme SpatialUnlockPlayer-Diagnostics -configuration Diagnostics \
   -destination 'platform=macOS,arch=arm64' build
 
-# Wrap the app before upload so its executable permissions and bundle survive.
-ditto -c -k --sequesterRsrc --keepParent 'SpatialUnlock Player.app' \
-  build/ci/SpatialUnlockPlayer-macos-arm64.zip
-archive_check_dir="$(mktemp -d "$PWD/build/ci/unpacked.XXXXXX")"
-trap 'rm -rf "$archive_check_dir"' EXIT
-ditto -x -k build/ci/SpatialUnlockPlayer-macos-arm64.zip "$archive_check_dir"
-test -x "$archive_check_dir/SpatialUnlock Player.app/Contents/MacOS/SpatialUnlockPlayer"
-run_check archive python3 Scripts/check_release.py "$archive_check_dir/SpatialUnlock Player.app"
-(
-  cd build/ci
-  shasum -a 256 SpatialUnlockPlayer-macos-arm64.zip > SpatialUnlockPlayer-macos-arm64.zip.sha256
-)
+# Local releases and CI use the same versioned, round-trip-checked archive.
+run_check archive zsh Scripts/package_release.sh build/ci

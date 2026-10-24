@@ -125,8 +125,11 @@ int main(int argc, const char **argv) { @autoreleasepool {
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:@(argv[1])] options:nil];
     AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:asset];
     item.allowedAudioSpatializationFormats = spatial ? AVAudioSpatializationFormatMonoStereoAndMultichannel : 0;
+    NSString *volumeSetting = NSProcessInfo.processInfo.environment[@"ROUTE_PROBE_VOLUME"];
+    float volume = volumeSetting ? volumeSetting.floatValue : .02f;
+    if (!isfinite(volume) || volume < 0 || volume > 1) return 2;
     AVPlayer *player = [AVPlayer new];
-    player.audioOutputDeviceUniqueID = device[@"uid"]; player.volume = .02;
+    player.audioOutputDeviceUniqueID = device[@"uid"]; player.volume = volume;
     player.automaticallyWaitsToMinimizeStalling = YES;
     [player replaceCurrentItemWithPlayerItem:item];
     for (unsigned n = 0; item.status == AVPlayerItemStatusUnknown && n < 1000; n++) pump(.01);
@@ -163,7 +166,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
     NSArray *records = saveRecords(@(argv[7]));
     NSDictionary *report = @{@"media":@(argv[1]), @"device":device, @"route":@(argv[3]),
         @"seek":@(seek), @"duration":@(duration), @"position":@(position), @"yaw":@(atof(argv[6])),
-        @"volume":@(.02), @"eqEnabled":@NO, @"hrtfOverride":@(hrtfOverride), @"traceUnits":@(traceUnits),
+        @"volume":@(volume), @"eqEnabled":@NO, @"hrtfOverride":@(hrtfOverride), @"traceUnits":@(traceUnits),
         @"headroomOverrideDB":headroom ?: (id)NSNull.null, @"ready":@(ready), @"sought":@(sought), @"error":error,
         @"systemVersion":NSProcessInfo.processInfo.operatingSystemVersionString,
         @"defaultBefore":defaultBefore, @"defaultAfter":defaultOutput(),

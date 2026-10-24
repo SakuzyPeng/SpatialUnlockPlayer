@@ -1,4 +1,5 @@
 #include "../Sources/SpatialShim/RenderConfiguration.h"
+#include "../Sources/SpatialShim/SpatialShim.h"
 #include <assert.h>
 #include <math.h>
 #include <pthread.h>
@@ -79,6 +80,36 @@ static void *writer(void *context) {
     return NULL;
 }
 int main(void) {
+    // Personalized IR availability is opt-in, independent of capability spoofing
+    // for the selected output. Native discovery must still see the real device.
+    AudioObjectID probeDevice = 123;
+    AudioObjectPropertyAddress availability = {'hrfa', kAudioObjectPropertyScopeGlobal, 0};
+    Boolean nativeAvailability = SpatialShimNativeHasProperty(probeDevice, 'hrfa');
+    assert(!SpatialRenderRequestsPersonalizedHRTF());
+    SpatialShimSetConfiguration(0, false);
+    SpatialRenderConfigure((SpatialRenderConfiguration){1, probeDevice, 1, SpatialHRTFPersonalized, 0, 20});
+    assert(SpatialRenderRequestsPersonalizedHRTF());
+    assert(AudioObjectHasProperty(probeDevice, &availability));
+    assert(SpatialShimNativeHasProperty(probeDevice, 'hrfa') == nativeAvailability);
+    UInt32 bytes = 0;
+    assert(!AudioObjectGetPropertyDataSize(probeDevice, &availability, 0, NULL, &bytes) && bytes == 4);
+    struct { UInt32 value, guard; } result = {0, 0xcafef00d};
+    assert(!AudioObjectGetPropertyData(probeDevice, &availability, 0, NULL, &bytes, &result.value));
+    assert(result.value == 1 && result.guard == 0xcafef00d);
+    bytes = 3; result.value = 42;
+    assert(AudioObjectGetPropertyData(probeDevice, &availability, 0, NULL, &bytes, &result.value) == kAudioHardwareBadPropertySizeError);
+    assert(result.value == 42 && result.guard == 0xcafef00d);
+    const SpatialRenderConfiguration inactive[] = {
+        {2, probeDevice, 1, SpatialHRTFGeneric, 0, 20},
+        {3, probeDevice, 1, SpatialHRTFSystem, 0, 20},
+        {4, probeDevice, 0, SpatialHRTFPersonalized, 0, 20},
+        {5, 0, 1, SpatialHRTFPersonalized, 0, 20}
+    };
+    for (unsigned i = 0; i < sizeof(inactive) / sizeof(*inactive); i++) {
+        SpatialRenderConfigure(inactive[i]);
+        assert(!SpatialRenderRequestsPersonalizedHRTF());
+        assert(AudioObjectHasProperty(probeDevice, &availability) == nativeAvailability);
+    }
     configure(1, 20, false); Chain c = makeChain(true);
     assert(gain(c.units[1]) == -3 && gain(c.units[4]) == 3);
     float peak = 0; for (unsigned b = 0; b < 30; b++) peak = fmaxf(peak, render(c, b));

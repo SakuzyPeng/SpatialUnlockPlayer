@@ -28,6 +28,7 @@ static SpatialRenderStatus status = {.requestedHRTF = SpatialHRTFSystem, .actual
 static _Atomic uint64_t activeGeneration;
 static _Atomic int activeHRTF = SpatialHRTFSystem;
 static _Atomic bool activeAllowed;
+static _Atomic bool personalizedRequested;
 static Node *appliedPre, *appliedPost, *appliedSpatial;
 static int32_t hrtfWriteError;
 #ifdef SPATIAL_RENDER_TESTING
@@ -228,12 +229,16 @@ void SpatialRenderConfigure(SpatialRenderConfiguration next) {
     configuration = next;
     appliedPre = appliedPost = appliedSpatial = NULL; hrtfWriteError = 0;
     atomic_store(&activeAllowed, next.allowed != 0); atomic_store(&activeHRTF, next.hrtfMode);
+    atomic_store(&personalizedRequested, next.allowed && next.deviceID && next.hrtfMode == SpatialHRTFPersonalized);
     atomic_store(&activeGeneration, next.generation);
     status = (SpatialRenderStatus){.generation = next.generation, .deviceID = next.deviceID,
         .allowed = next.allowed, .requestedHRTF = next.hrtfMode, .actualHRTF = -1,
         .customHeadroom = next.customHeadroom, .requestedHeadroomDB = next.headroomDB,
         .headroomState = next.allowed ? (next.customHeadroom ? SpatialRenderWaiting : SpatialRenderSystem) : SpatialRenderInactive};
     pthread_mutex_unlock(&control);
+}
+bool SpatialRenderRequestsPersonalizedHRTF(void) {
+    return atomic_load(&personalizedRequested);
 }
 void SpatialRenderUnitCreated(AudioComponentInstance unit) {
     AudioComponentDescription description = {0}; AudioComponent component = AudioComponentInstanceGetComponent(unit);

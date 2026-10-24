@@ -45,7 +45,16 @@ SpatialShimStatus SpatialShimGetStatus(void) {
 }
 static bool overrides(AudioObjectID device, const AudioObjectPropertyAddress *a) {
     uint64_t c = atomic_load_explicit(&configuration, memory_order_acquire);
-    bool match = a && (c >> 32) && device == (uint32_t)c && (a->mSelector == 'spen' || a->mSelector == 'spmd');
+    // macOS gates its process-local PersonalizedIRData loader on 'hrfa' of the
+    // system default output, even when AVPlayer targets another device. Only
+    // the explicit personalized choice opts in. Reuse all three capability
+    // hooks: the loader checks property existence before it reads the value.
+    // Keep native discovery and the AU's actual personalized status untouched.
+    bool personalized = a && device > kAudioObjectSystemObject && a->mSelector == 'hrfa' &&
+        a->mScope == kAudioObjectPropertyScopeGlobal && a->mElement == kAudioObjectPropertyElementMain &&
+        SpatialRenderRequestsPersonalizedHRTF();
+    bool match = personalized || (a && (c >> 32) && device == (uint32_t)c &&
+        (a->mSelector == 'spen' || a->mSelector == 'spmd'));
     if (match) atomic_fetch_add_explicit(&queryCount, 1, memory_order_relaxed);
     return match;
 }

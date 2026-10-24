@@ -70,15 +70,15 @@ These results cover this machine, this system version, these devices and this ma
 
 The source repository does not contain a built app. You can get one in these ways:
 
-- **Release.** Open [Releases](https://github.com/SakuzyPeng/SpatialUnlockPlayer/releases) and download `SpatialUnlockPlayer-macos-arm64.zip` and its `.sha256` checksum file from the version's **Assets**. If no release is available yet, use a CI build.
-- **CI build.** Open [Actions → CI](https://github.com/SakuzyPeng/SpatialUnlockPlayer/actions/workflows/ci.yml), select a green successful run on `main`, then download the app artifact whose name starts with `SpatialUnlockPlayer-macos-arm64-ad-hoc-` under **Artifacts** at the bottom of the page. Signing in to GitHub is required; artifacts are kept for 7 days.
+- **Release.** Open [Releases](https://github.com/SakuzyPeng/SpatialUnlockPlayer/releases) and download `SpatialUnlockPlayer-0.2.1-macos-arm64.zip` and its `.sha256` checksum file from the version's **Assets**. If no release is available yet, use a CI build.
+- **CI build.** Open [Actions → CI](https://github.com/SakuzyPeng/SpatialUnlockPlayer/actions/workflows/ci.yml), select a green successful run on `main`, then download the app artifact whose name starts with `SpatialUnlockPlayer-` and includes the version under **Artifacts** at the bottom of the page. Signing in to GitHub is required; artifacts are kept for 7 days.
 - **Build it yourself.** See [Building from source](#building-from-source); one command exports an app you can double-click.
 
-For a CI download, first unpack GitHub's outer artifact ZIP to get `SpatialUnlockPlayer-macos-arm64.zip` and its `.sha256` file. Keep the app ZIP and checksum in the same directory, then verify and extract:
+For a CI download, first unpack GitHub's outer artifact ZIP to get `SpatialUnlockPlayer-0.2.1-macos-arm64.zip` and its `.sha256` file. Keep the app ZIP and checksum in the same directory, then verify and extract:
 
 ```sh
-shasum -a 256 -c SpatialUnlockPlayer-macos-arm64.zip.sha256
-ditto -x -k SpatialUnlockPlayer-macos-arm64.zip .
+shasum -a 256 -c SpatialUnlockPlayer-0.2.1-macos-arm64.zip.sha256
+ditto -x -k SpatialUnlockPlayer-0.2.1-macos-arm64.zip .
 ```
 
 This produces `SpatialUnlock Player.app`, which you can move to Applications and open.
@@ -117,6 +117,8 @@ The two advanced settings correspond exactly to the two variables in the compari
 | **HRTF 模式** (HRTF mode) | Requests the generic HRTF or the system's existing personalised one, without changing global settings | Whatever AirPods actually use: **personalised** if you have created a personalised spatial audio profile in the system, generic otherwise |
 
 Both start as “系统决定” (System decides), which leaves system behaviour alone. Settings are saved per actual output device, and “恢复此设备的系统设置” (Restore this device's system settings) resets both. When a personalised profile is not actually in effect, the panel says plainly that the generic HRTF is still in use. See the [user manual](docs/MANUAL.en.md#advanced-spatial-audio-settings).
+
+Choosing Personalised enables profile-loading compatibility inside this player process. When the Mac has an available personal profile, AirPods do not need to remain connected or be the system default output. With AirPods disconnected and FIIO as the default, this machine produced spatial PCM identical sample for sample to the normal personalised reference. See the [availability and forced-loading comparison](Tests/HRTF_AVAILABILITY.md) (in Chinese).
 
 The match ends at the output this process hands to the HAL. The roughly −12 dB digital attenuation AirPods apply after the HAL is outside this app's control, and the app does not compensate for it. Adding or removing 12 dB by hand is not recommended: the host transfer level alone does not determine the headphones' internal processing, volume or final sound pressure. See the [USB PCM comparison](Tests/USB_AUDIO_COMPARISON.md#结论边界与产品含义) (in Chinese).
 

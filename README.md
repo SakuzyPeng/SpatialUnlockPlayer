@@ -70,15 +70,15 @@ flowchart LR
 
 源码仓库不包含编译后的应用，可通过以下方式获取：
 
-- **发布版本**：打开 [Releases](https://github.com/SakuzyPeng/SpatialUnlockPlayer/releases)，在对应版本的 **Assets** 下载 `SpatialUnlockPlayer-macos-arm64.zip` 和同名 `.sha256` 校验文件。尚无发布版本时，可使用 CI 构建。
-- **CI 构建**：打开 [Actions → CI](https://github.com/SakuzyPeng/SpatialUnlockPlayer/actions/workflows/ci.yml)，选择 `main` 上绿色通过的运行，在页面底部 **Artifacts** 点击名称以 `SpatialUnlockPlayer-macos-arm64-ad-hoc-` 开头的应用包下载。需要登录 GitHub，产物保留 7 天。
+- **发布版本**：打开 [Releases](https://github.com/SakuzyPeng/SpatialUnlockPlayer/releases)，在对应版本的 **Assets** 下载 `SpatialUnlockPlayer-0.2.1-macos-arm64.zip` 和同名 `.sha256` 校验文件。尚无发布版本时，可使用 CI 构建。
+- **CI 构建**：打开 [Actions → CI](https://github.com/SakuzyPeng/SpatialUnlockPlayer/actions/workflows/ci.yml)，选择 `main` 上绿色通过的运行，在页面底部 **Artifacts** 点击名称以 `SpatialUnlockPlayer-` 开头、包含版本号的应用包下载。需要登录 GitHub，产物保留 7 天。
 - **自己构建**：按[从源码构建](#从源码构建)，一条命令导出可双击的应用。
 
-从 CI 下载时，先解开 GitHub 提供的外层 Artifact ZIP，得到 `SpatialUnlockPlayer-macos-arm64.zip` 和它的 `.sha256` 文件。将应用 ZIP 与校验文件放在同一目录，校验后解压：
+从 CI 下载时，先解开 GitHub 提供的外层 Artifact ZIP，得到 `SpatialUnlockPlayer-0.2.1-macos-arm64.zip` 和它的 `.sha256` 文件。将应用 ZIP 与校验文件放在同一目录，校验后解压：
 
 ```sh
-shasum -a 256 -c SpatialUnlockPlayer-macos-arm64.zip.sha256
-ditto -x -k SpatialUnlockPlayer-macos-arm64.zip .
+shasum -a 256 -c SpatialUnlockPlayer-0.2.1-macos-arm64.zip.sha256
+ditto -x -k SpatialUnlockPlayer-0.2.1-macos-arm64.zip .
 ```
 
 解压得到 `SpatialUnlock Player.app`，可移到“应用程序”目录后打开。
@@ -117,6 +117,8 @@ ditto -x -k SpatialUnlockPlayer-macos-arm64.zip .
 | **HRTF 模式** | 请求通用或系统已有的个性化 HRTF，不修改全局设置 | 与 AirPods 实际使用的一致：系统里建过个性化空间音频档案就选**个性化**，否则选通用 |
 
 两项初始都为“系统决定”，即不覆盖系统行为。设置按实际输出设备分别保存，“恢复此设备的系统设置”可一键还原。个性化档案未实际启用时，面板会明确显示仍在使用通用 HRTF。详见[用户手册](docs/MANUAL.md#空间音频高级设置)。
+
+选择“个性化”会在本播放器进程内启用档案加载所需的能力兼容处理。Mac 已有可用个人档案时，无需保持 AirPods 在线或作为系统默认输出；本机已验证 AirPods 离线、默认 FIIO 时与正常个人 HRTF 参考逐样本一致。见[个性化可用性与强制加载对照](Tests/HRTF_AVAILABILITY.md)。
 
 对齐的范围止于本进程交给 HAL 的输出。AirPods 在 HAL 之后约 −12 dB 的数字衰减不在本应用控制范围内，应用也不做补偿；不建议据此手动加减 12 dB，主机传输幅度不能单独决定耳机内部处理、音量和最终声压。见[USB PCM 对照](Tests/USB_AUDIO_COMPARISON.md#结论边界与产品含义)。
 

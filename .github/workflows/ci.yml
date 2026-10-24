@@ -42,15 +42,19 @@ jobs:
           python3 -m pip install --no-cache-dir -r Tests/requirements-ci.txt
 
       - name: Build, test, and package
-        run: zsh Scripts/ci.sh
+        id: build
+        run: |
+          zsh Scripts/ci.sh
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' 'SpatialUnlock Player.app/Contents/Info.plist')
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
       - name: Upload ad hoc application
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: SpatialUnlockPlayer-macos-arm64-ad-hoc-${{ github.sha }}-${{ github.run_attempt }}
+          name: SpatialUnlockPlayer-${{ steps.build.outputs.version }}-macos-arm64-ad-hoc-${{ github.sha }}-${{ github.run_attempt }}
           path: |
-            build/ci/SpatialUnlockPlayer-macos-arm64.zip
-            build/ci/SpatialUnlockPlayer-macos-arm64.zip.sha256
+            build/ci/SpatialUnlockPlayer-${{ steps.build.outputs.version }}-macos-arm64.zip
+            build/ci/SpatialUnlockPlayer-${{ steps.build.outputs.version }}-macos-arm64.zip.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 7

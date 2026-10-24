@@ -47,7 +47,7 @@ def generate():
 
 
 def capture(label, uid, route, media=None, seek=0, duration=8, yaw=0, hrtf=None,
-            trace_units=False, headroom_db=None, production=False):
+            trace_units=False, headroom_db=None, production=False, volume=None):
     ART.mkdir(parents=True, exist_ok=True)
     media = Path(media) if media else generate()
     prefix = ART / label
@@ -58,6 +58,11 @@ def capture(label, uid, route, media=None, seek=0, duration=8, yaw=0, hrtf=None,
     env.pop('ROUTE_PROBE_HEADROOM_DB', None)
     env.pop('ROUTE_PROBE_PRODUCTION', None)
     env.pop('ROUTE_PROBE_PRODUCTION_HEADROOM_DB', None)
+    env.pop('ROUTE_PROBE_VOLUME', None)
+    if volume is not None:
+        if not np.isfinite(volume) or not 0 <= volume <= 1:
+            raise ValueError('Probe volume must be between 0 and 1')
+        env['ROUTE_PROBE_VOLUME'] = str(volume)
     if hrtf is not None:
         env['ROUTE_PROBE_HRTF'] = str(hrtf)
     if trace_units or (headroom_db is not None and not production):
@@ -200,6 +205,7 @@ def main():
     cap.add_argument('--headroom-db', type=float,
                      help='Test-only paired pre/post gains around the observed dynamics chain; enables unit tracing')
     cap.add_argument('--production', action='store_true', help='Exercise the shipping topology-based configuration module')
+    cap.add_argument('--volume', type=float, help='Test player volume (default 0.02; 0 permits silent spatial-stage capture)')
     comp = commands.add_parser('compare')
     comp.add_argument('a'); comp.add_argument('b'); comp.add_argument('--stage', default='spatial-postrender')
     comp.add_argument('--b-stage'); comp.add_argument('--output')
@@ -207,7 +213,7 @@ def main():
     if args.command == 'generate': print(generate())
     elif args.command == 'capture':
         capture(args.label, args.uid, args.route, args.media, args.seek, args.duration, args.yaw, args.hrtf,
-                args.trace_units, args.headroom_db, args.production)
+                args.trace_units, args.headroom_db, args.production, args.volume)
     else:
         result = compare(args.a, args.b, args.stage, args.b_stage)
         text = json.dumps(result, indent=2, ensure_ascii=False)

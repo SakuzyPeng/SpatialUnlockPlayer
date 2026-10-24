@@ -31,6 +31,9 @@ typedef struct {
 void SpatialRenderConfigure(SpatialRenderConfiguration configuration);
 void SpatialRenderRefreshStatus(void);
 SpatialRenderStatus SpatialRenderGetStatus(void);
+// Lock-free policy for the existing CoreAudio capability hooks. This requests
+// access to the system's real profile; it never substitutes actual AU status.
+bool SpatialRenderRequestsPersonalizedHRTF(void);
 
 // Shared lifecycle hooks; also used by research probes with external interposers.
 void SpatialRenderUnitCreated(AudioComponentInstance unit);
