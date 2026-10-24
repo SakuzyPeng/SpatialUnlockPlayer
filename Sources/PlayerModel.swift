@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 @MainActor
 final class PlayerModel: ObservableObject {
     let devices = AudioDeviceCatalog()
+    let headTracking: HeadTrackingModel
     @Published private(set) var playlist: [PlaylistEntry] = []
     @Published private(set) var currentID: UUID?
     @Published private(set) var player: AVPlayer?
@@ -48,16 +49,18 @@ final class PlayerModel: ObservableObject {
     var canGoNext: Bool { currentIndex.map { $0 + 1 < playlist.count } ?? !playlist.isEmpty }
     var isReady: Bool { player?.currentItem?.status == .readyToPlay && !isLoading && !isSeeking }
     var selectedOutput: AudioOutputDevice? { devices.resolve(outputSelection) }
-    var displayTitle: String { metadata.title.isEmpty ? currentEntry?.title ?? "SpatialPlayer" : metadata.title }
+    var displayTitle: String { metadata.title.isEmpty ? currentEntry?.title ?? "SpatialUnlock Player" : metadata.title }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        self.headTracking = HeadTrackingModel(defaults: defaults)
         self.volume = defaults.object(forKey: "volume") == nil ? 0.1 : min(1, max(0, defaults.float(forKey: "volume")))
         self.spatialMode = SpatialMode(rawValue: defaults.string(forKey: "spatialMode") ?? "") ?? .automatic
         let saved = defaults.string(forKey: "outputUID") ?? "system"
         self.outputSelection = saved == "system" || devices.devices.contains(where: { $0.uid == saved }) ? saved : "system"
         activeDevice = selectedOutput
         policy = SpatialPolicy.resolve(mode: spatialMode, device: activeDevice)
+        updateHeadTrackingPolicy()
         devices.onChange = { [weak self] in self?.devicesChanged() }
         if let session = PlaybackSession.load(from: defaults) {
             playlist = session.entries
@@ -204,6 +207,7 @@ final class PlayerModel: ObservableObject {
     }
     private func updateRoute(rebuildCurrent: Bool) {
         policy = SpatialPolicy.resolve(mode: spatialMode, device: selectedOutput)
+        updateHeadTrackingPolicy()
         if rebuildCurrent, currentEntry != nil { rebuild(at: position, autoplay: wantsToPlay) }
         else { activeDevice = selectedOutput; SpatialShimSetConfiguration(0, false) }
     }
@@ -214,10 +218,12 @@ final class PlayerModel: ObservableObject {
         guard nextDevice != activeDevice || nextPolicy != policy else { objectWillChange.send(); return }
         let removed = activeDevice.map { old in !devices.devices.contains(where: { $0.uid == old.uid }) } ?? false
         policy = nextPolicy
+        updateHeadTrackingPolicy()
         if removed, currentEntry != nil {
             invalidatePlayback()
             activeDevice = nextDevice; wantsToPlay = false; isLoading = false; isSeeking = false
             SpatialShimSetConfiguration(0, false)
+            headTracking.setRenderingAllowed(false)
             errorMessage = "输出设备已断开，播放已暂停。"
         } else { updateRoute(rebuildCurrent: true) }
     }
@@ -236,6 +242,7 @@ final class PlayerModel: ObservableObject {
         }
         activeDevice = device
         policy = SpatialPolicy.resolve(mode: spatialMode, device: device)
+        updateHeadTrackingPolicy()
         SpatialShimSetConfiguration(device.id, policy.useShim)
         let asset = AVURLAsset(url: entry.url)
         timeoutTask = Task { [weak self] in
@@ -360,13 +367,14 @@ final class PlayerModel: ObservableObject {
     }
     func shutdown() {
         shuttingDown = true
+        headTracking.shutdown()
         pause()
         invalidatePlayback(); devices.shutdown(); SpatialShimSetConfiguration(0, false)
     }
 
     func diagnosticSnapshot() -> [String: Any] {
         let shim = SpatialShimGetStatus()
-        return ["file": currentEntry?.url.path ?? "", "playlistCount": playlist.count,
+        var result: [String: Any] = ["file": currentEntry?.url.path ?? "", "playlistCount": playlist.count,
                 "position": position, "duration": duration, "ready": isReady, "playing": isPlaying,
                 "wantsToPlay": wantsToPlay, "loading": isLoading, "seeking": isSeeking,
                 "mode": spatialMode.rawValue, "outputSelection": outputSelection,
@@ -376,5 +384,10 @@ final class PlayerModel: ObservableObject {
                 "queueLayout": String(format: "0x%08x", shim.lastChannelLayout),
                 "hasVideo": metadata.hasVideo, "sourceAudio": metadata.audioDescription,
                 "error": errorMessage ?? "", "errorDetails": errorDetails]
+        result.merge(headTracking.diagnosticSnapshot()) { _, new in new }
+        return result
+    }
+    private func updateHeadTrackingPolicy() {
+        headTracking.setRenderingAllowed(policy.allowSpatialization && selectedOutput?.channels == 2)
     }
 }

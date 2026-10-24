@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <CoreAudio/CoreAudio.h>
+#include "HeadPose.h"
 
 typedef struct {
     uint32_t deviceID;

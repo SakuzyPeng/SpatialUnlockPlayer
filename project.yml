@@ -1,0 +1,110 @@
+name: SpatialUnlockPlayer
+
+options:
+  minimumXcodeGenVersion: 2.44.1
+  xcodeVersion: "27.0"
+  developmentLanguage: zh-Hans
+  deploymentTarget:
+    macOS: "27.0"
+  defaultConfig: Debug
+
+configs:
+  Debug: debug
+  Release: release
+  Diagnostics: release
+
+settings:
+  base:
+    ARCHS: arm64
+    SWIFT_VERSION: "6.0"
+    CLANG_C_LANGUAGE_STANDARD: c11
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_ALLOWED: YES
+    ENABLE_APP_SANDBOX: NO
+    ENABLE_HARDENED_RUNTIME: NO
+    MODULE_CACHE_DIR: "$(USER_LIBRARY_DIR)/Developer/Xcode/DerivedData/ModuleCache.noindex"
+    CONFIGURATION_BUILD_DIR: "$(SRCROOT)/build/Products/$(CONFIGURATION)"
+  configs:
+    Diagnostics:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SPATIAL_DIAGNOSTICS"
+      GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) SPATIAL_DIAGNOSTICS=1"
+
+fileGroups:
+  - project.yml
+  - build.sh
+  - README.md
+  - Resources/Info.plist
+  - Tests/README.md
+  - Tests/VALIDATION.md
+  - Tests/persistence_test.py
+  - Tests/shim_test.c
+  - Scripts/generate_app_icon.swift
+
+targets:
+  SpatialShim:
+    type: library.dynamic
+    platform: macOS
+    sources:
+      - path: Sources/SpatialShim
+        headerVisibility: project
+    settings:
+      base:
+        PRODUCT_NAME: libSpatialShim
+        LD_DYLIB_INSTALL_NAME: "@rpath/$(EXECUTABLE_NAME)"
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: CoreAudio.framework
+      - sdk: AudioToolbox.framework
+
+  SpatialUnlockPlayer:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+        excludes:
+          - SpatialShim
+      - path: Resources
+        excludes:
+          - Info.plist
+    settings:
+      base:
+        PRODUCT_NAME: SpatialUnlock Player
+        PRODUCT_MODULE_NAME: SpatialUnlockPlayer
+        EXECUTABLE_NAME: SpatialUnlockPlayer
+        PRODUCT_BUNDLE_IDENTIFIER: local.sakuzy.SpatialPlayer
+        INFOPLIST_FILE: Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/SpatialShim/SpatialShim.h
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+        ENABLE_DEBUG_DYLIB: NO
+    dependencies:
+      - target: SpatialShim
+        embed: true
+        codeSign: true
+        copy:
+          destination: frameworks
+
+schemes:
+  SpatialUnlockPlayer:
+    build:
+      targets:
+        SpatialUnlockPlayer: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+
+  SpatialUnlockPlayer-Diagnostics:
+    build:
+      targets:
+        SpatialUnlockPlayer: [run, analyze]
+    run:
+      config: Diagnostics
+    analyze:
+      config: Diagnostics

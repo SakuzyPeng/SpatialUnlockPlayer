@@ -76,7 +76,8 @@ INTERPOSE(shimGet, AudioObjectGetPropertyData)
 
 #ifdef SPATIAL_DIAGNOSTICS
 // Read-only instrumentation in the diagnostic build. It never changes a queue
-// property or audio samples; the release build contains only the three hooks above.
+// property or audio samples. The release build omits this observer; its capability
+// hooks and the independent HeadPose.c integration remain available.
 static OSStatus diagnosticQueueSet(AudioQueueRef queue, AudioQueuePropertyID property, const void *data, UInt32 size) {
     OSStatus result = AudioQueueSetProperty(queue, property, data, size);
     if (!result && data) {

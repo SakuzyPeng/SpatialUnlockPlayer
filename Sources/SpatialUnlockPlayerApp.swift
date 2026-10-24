@@ -35,16 +35,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @main
 @MainActor
-struct SpatialPlayerApp: App {
+struct SpatialUnlockPlayerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model: PlayerModel
 
     init() {
         #if SPATIAL_DIAGNOSTICS
-        let testing = ProcessInfo.processInfo.environment["SPATIALPLAYER_TEST_SCRIPT"] != nil
-        let preferences = testing ? UserDefaults(suiteName: "local.sakuzy.SpatialPlayer.Regression")! : .standard
-        if testing && ProcessInfo.processInfo.environment["SPATIALPLAYER_TEST_RESTORE_SESSION"] != "1" {
-            preferences.removePersistentDomain(forName: "local.sakuzy.SpatialPlayer.Regression")
+        let testing = ProcessInfo.processInfo.environment["SPATIALUNLOCKPLAYER_TEST_SCRIPT"] != nil
+        let preferences = testing ? UserDefaults(suiteName: "local.sakuzy.SpatialUnlockPlayer.Regression")! : .standard
+        if testing && ProcessInfo.processInfo.environment["SPATIALUNLOCKPLAYER_TEST_RESTORE_SESSION"] != "1" {
+            preferences.removePersistentDomain(forName: "local.sakuzy.SpatialUnlockPlayer.Regression")
         }
         #else
         let preferences = UserDefaults.standard
@@ -55,7 +55,7 @@ struct SpatialPlayerApp: App {
     }
 
     var body: some Scene {
-        Window("SpatialPlayer", id: "main") {
+        Window("SpatialUnlock Player", id: "main") {
             PlayerView(model: model, devices: model.devices)
         }
         .defaultSize(width: 1000, height: 650)
@@ -72,6 +72,8 @@ struct SpatialPlayerApp: App {
                 Divider()
                 Button("后退 10 秒") { model.seek(to: model.position - 10) }.keyboardShortcut(.leftArrow, modifiers: [.command, .option])
                 Button("前进 10 秒") { model.seek(to: model.position + 10) }.keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                Divider()
+                Button("头部追踪回正", action: model.headTracking.recenter).keyboardShortcut("r", modifiers: [.command, .shift])
                 Divider()
                 Button("切换全屏", action: AppContext.toggleFullScreen).keyboardShortcut("f", modifiers: [.command, .control])
             }

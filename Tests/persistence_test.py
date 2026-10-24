@@ -9,8 +9,8 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = ROOT / "Tests/Artifacts"
-APP = ROOT / "SpatialPlayer.app/Contents/MacOS/SpatialPlayer"
-DOMAIN = "local.sakuzy.SpatialPlayer.Regression"
+APP = ROOT / "SpatialUnlock Player.app/Contents/MacOS/SpatialUnlockPlayer"
+DOMAIN = "local.sakuzy.SpatialUnlockPlayer.Regression"
 VIDEO = ARTIFACTS / "video-test.mp4"
 APAC = Path("Tests/Artifacts/persistence-test.m4a")
 MISSING = ARTIFACTS / "persistence-removable.wav"
@@ -30,9 +30,9 @@ def run(name, steps, restore=True):
     result.unlink(missing_ok=True)
     env = os.environ.copy()
     env.pop("DYLD_INSERT_LIBRARIES", None)
-    env.pop("SPATIALPLAYER_TEST_KEEP_OPEN", None)
-    env.update(SPATIALPLAYER_TEST_SCRIPT=str(script), SPATIALPLAYER_TEST_RESULT=str(result),
-               SPATIALPLAYER_TEST_RESTORE_SESSION="1" if restore else "0")
+    env.pop("SPATIALUNLOCKPLAYER_TEST_KEEP_OPEN", None)
+    env.update(SPATIALUNLOCKPLAYER_TEST_SCRIPT=str(script), SPATIALUNLOCKPLAYER_TEST_RESULT=str(result),
+               SPATIALUNLOCKPLAYER_TEST_RESTORE_SESSION="1" if restore else "0")
     with (ARTIFACTS / f"persistence-{name}.log").open("w") as log:
         subprocess.run([str(APP)], env=env, stdout=log, stderr=subprocess.STDOUT, timeout=45, check=True)
     report = json.loads(result.read_text())

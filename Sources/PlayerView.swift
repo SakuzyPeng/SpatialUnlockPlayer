@@ -84,6 +84,7 @@ struct PlayerView: View {
                 }
                 .labelsHidden().frame(width: 155).accessibilityIdentifier("spatialMode")
             }
+            HeadTrackingControl(model: model.headTracking)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
     }
@@ -154,7 +155,7 @@ struct PlayerView: View {
                 VStack(spacing: geometry.size.height < 300 ? 10 : 18) {
                     Image(systemName: "play.rectangle.on.rectangle").font(.system(size: geometry.size.height < 300 ? 36 : 52, weight: .light)).foregroundStyle(.blue)
                     VStack(spacing: 8) {
-                        Text("SpatialPlayer").font(.largeTitle.weight(.semibold))
+                        Text("SpatialUnlock Player").font(.largeTitle.weight(.semibold))
                         Text("打开音频或视频，开始播放").foregroundStyle(.secondary)
                     }
                     Button("打开文件…", action: model.presentOpenPanel).buttonStyle(.borderedProminent).controlSize(.large)

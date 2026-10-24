@@ -1,6 +1,20 @@
-# SpatialPlayer 首版验证记录
+# SpatialUnlock Player 首版验证记录
+
+## 2026-10-23：外部 PoseBridge OSC 接入
+
+- 接入方式按用户选择为外部 OSC 接收，没有嵌入 PoseBridge 动态库或管理传感器。默认仅监听 `127.0.0.1:9000`，支持 OSC 3 quaternion/euler 两种姿态消息及独立 info/status。
+- 后台队列处理协议校验、来源锁定、源停留年龄与本地经过时间、去重、会话／实例／参考变化。旧元数据和旧姿态不能越过新参考边界；角度跨越 ±180° 时保持四元数符号连续。500 ms 过期或终态冻结；本地回正不发送设备命令。
+- 原子姿态快照接入本进程 AUSpatialMixer 私有属性 3102。主动渲染前通知解决普通耳机没有原生头追回调的问题；关闭接管恢复最后的原生朝向。回调内不解析网络、分配内存、写日志或等待发布线程。
+- `Tests/head_tracking_test.sh` 通过：协议边界、坐标转换、回正与时效；真实 Apple 空间混音器的离线 PCM、原生／外部更新竞争、并发快照、关闭恢复、重新初始化及 70 次实例回收。离线中置 1800 Hz 的左右电平差随 Z 轴 +45°／−45° 分别为 +9.07／−7.51 dB。
+- `Tests/posebridge_integration_test.py` 使用现有真实 PoseBridge CLI 模拟器、普通 3.5 mm 耳机输出和正常链接的动态库：quaternion 30 步、euler 30 步、端口占用 4 步全部通过。最终两轮分别接收 515／518 个姿态，应用 513／516 次，渲染错误为 0。采样与渲染节奏不同，两个计数不要求相等。
+- 同时重跑原有 `smoke` 22 步和 `regression` 59 步，均通过；覆盖 APAC 16／24 声道、Atmos、PCM、视频、模式切换、播放列表及异常输入等原有场景。结果保存于 `Tests/Artifacts/posebridge-integration/base-*-result.json`。
+- Release 实际界面检查：接收开关、来源名称、三个角度、状态心跳、回正、模拟器停止后的保持提示与关闭恢复均可用。原有播放列表和暂停位置恢复正常。
+- Release 构建通过，根目录导出应用签名／Info.plist 校验通过；保留正式头追功能，不含 AudioQueue 测试观察器或诊断脚本入口。构建检查改为匹配可执行文件路径，避免把工作目录名含 SpatialUnlockPlayer 的工具进程误判为播放器。
+- 本轮没有连接实体 WIT 传感器，也没有测量 USB/BLE 或动作到声音的总延迟。当前 PoseBridge GUI 的目标地址与默认接收端一致，但传感器尚未连接且 OSC 输出未开启；佩戴映射由外部 PoseBridge 负责。
 
 验证日期：2026-10-23。环境：Apple Silicon、macOS 27.0.1、Xcode 27。交付应用为普通 release 构建，已移除测试入口和 AudioQueue 诊断钩子。
+
+以下初版验证完成于更名前，当时应用名称为 SpatialPlayer。
 
 ## 启动、链接与签名
 
@@ -68,6 +82,18 @@
 - 视频暂停在 6 秒后恢复正确；清空后再次启动为空列表。
 
 测试使用独立偏好域，未改动用户媒体文件；诊断场景和结果见 `Tests/Artifacts/persistence-*`。
+
+## 更名补测
+
+2026-10-23 更名为 SpatialUnlock Player，项目目录改为 `SpatialUnlockPlayer`。在新目录构建诊断版后，`python3 Tests/persistence_test.py` 的 6 次进程启动、30 个步骤全部通过；随后重新构建正式版，签名验证与 Info.plist 检查通过。应用包为 `SpatialUnlock Player.app`，可执行文件为 `SpatialUnlockPlayer`，只保留一套应用产物。日常使用的 bundle ID 沿用 `local.sakuzy.SpatialPlayer`，继续读取已有播放列表和设置。
+
+## XcodeGen 迁移补测
+
+2026-10-23 使用 XcodeGen 2.44.1、Xcode 27，从 `project.yml` 生成应用和动态库两个 target。Debug、Release、Diagnostics 三种配置均通过构建、签名验证与 Info.plist 检查；构建中间文件使用 Xcode 默认 DerivedData，模块缓存使用系统共享目录。
+
+- Diagnostics 构建重新通过上述 5 组播放回归，共 129 个步骤，结果见 `Tests/Artifacts/xcodegen-*-result.json`；播放列表持久化的 6 次进程启动、30 个步骤也全部通过。
+- C 检查程序分别链接诊断版和正式版的 `libSpatialShim.dylib`，正常链接、原始能力查询绕过、UInt32 数据大小、边界保护及停用恢复均通过，运行时没有设置 `DYLD_INSERT_LIBRARIES`。
+- 确认 Diagnostics 包含测试入口和 `diagnosticQueueSet`，Release 均不包含。根目录导出的可执行文件与 Release 构建产物一致，动态库依赖为 `@rpath/libSpatialShim.dylib`。
 
 ## 已知限制与未完成的硬件验证
 

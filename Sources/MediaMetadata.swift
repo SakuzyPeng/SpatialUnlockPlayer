@@ -21,7 +21,7 @@ struct MediaMetadata {
 
     @MainActor static func load(asset: AVURLAsset) async throws -> Self {
         guard try await asset.load(.isPlayable) else {
-            throw NSError(domain: "SpatialPlayer", code: 1, userInfo: [NSLocalizedDescriptionKey: "系统无法播放这个文件。请使用 AVFoundation 支持的音视频格式。"])
+            throw NSError(domain: "SpatialUnlockPlayer", code: 1, userInfo: [NSLocalizedDescriptionKey: "系统无法播放这个文件。请使用 AVFoundation 支持的音视频格式。"])
         }
         var value = Self()
         let duration = try await asset.load(.duration)

@@ -1,5 +1,6 @@
 /build/
-/SpatialPlayer.app/
+/SpatialUnlock Player.app/
+/SpatialUnlockPlayer.xcodeproj/
 .DS_Store
 /build-*.log
 /Tests/Artifacts/

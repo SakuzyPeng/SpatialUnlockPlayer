@@ -5,7 +5,7 @@ import AppKit
 @MainActor
 enum DiagnosticRunner {
     static func startIfRequested(model: PlayerModel) {
-        guard let script = ProcessInfo.processInfo.environment["SPATIALPLAYER_TEST_SCRIPT"] else { return }
+        guard let script = ProcessInfo.processInfo.environment["SPATIALUNLOCKPLAYER_TEST_SCRIPT"] else { return }
         Task { await run(script: URL(fileURLWithPath: script), model: model) }
     }
 
@@ -48,6 +48,25 @@ enum DiagnosticRunner {
                     try await until(timeout: 10) { model.playlist.count == count }
                 case "seek": model.seek(to: step["value"] as? Double ?? 0)
                 case "volume": model.volume = Float(step["value"] as? Double ?? 0.1)
+                case "poseStart":
+                    model.headTracking.portText = String(step["port"] as? Int ?? 9000)
+                    model.headTracking.sourceFilter = step["source"] as? String ?? ""
+                    model.headTracking.setEnabled(true)
+                case "poseStop": model.headTracking.setEnabled(false)
+                case "poseRecenter": model.headTracking.recenter()
+                case "awaitPose":
+                    try await until(timeout: step["timeout"] as? Double ?? 10) {
+                        if let error = model.headTracking.snapshot.error { throw Self.error(error) }
+                        return model.headTracking.snapshot.fresh
+                    }
+                case "awaitPoseApplied":
+                    try await until(timeout: step["timeout"] as? Double ?? 10) {
+                        SpatialHeadPoseGetStatus().applied >= UInt64(step["minimum"] as? Int ?? 5)
+                    }
+                case "awaitPoseStale":
+                    try await until(timeout: step["timeout"] as? Double ?? 10) {
+                        model.headTracking.snapshot.accepted > 0 && !model.headTracking.snapshot.fresh
+                    }
                 case "awaitReady":
                     try await until(timeout: step["timeout"] as? Double ?? 15) {
                         if let error = model.errorMessage { throw Self.error(error) }
@@ -69,11 +88,11 @@ enum DiagnosticRunner {
         let result: [String: Any] = ["passed": failure == nil, "failure": failure ?? "", "steps": records,
                                      "injectedLibraries": ProcessInfo.processInfo.environment["DYLD_INSERT_LIBRARIES"] ?? "",
                                      "finalState": model.diagnosticSnapshot()]
-        let destination = ProcessInfo.processInfo.environment["SPATIALPLAYER_TEST_RESULT"].map { URL(fileURLWithPath: $0) } ?? script.appendingPathExtension("results.json")
+        let destination = ProcessInfo.processInfo.environment["SPATIALUNLOCKPLAYER_TEST_RESULT"].map { URL(fileURLWithPath: $0) } ?? script.appendingPathExtension("results.json")
         do { try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: destination) }
         catch { emit(["reportError": error.localizedDescription]) }
         model.pause()
-        if ProcessInfo.processInfo.environment["SPATIALPLAYER_TEST_KEEP_OPEN"] != "1" { NSApp.terminate(nil) }
+        if ProcessInfo.processInfo.environment["SPATIALUNLOCKPLAYER_TEST_KEEP_OPEN"] != "1" { NSApp.terminate(nil) }
     }
 
     private static func until(timeout: Double, condition: () throws -> Bool) async throws {
@@ -86,6 +105,16 @@ enum DiagnosticRunner {
     }
     private static func verify(_ expected: [String: Any], snapshot: [String: Any]) throws {
         for (key, value) in expected {
+            let counters = ["minPoseAccepted": "poseAccepted", "minPoseApplied": "poseApplied",
+                            "minPosePublished": "posePublished", "minPoseRestored": "poseRestored",
+                            "minPoseReferences": "poseReferences", "minPoseRecenters": "poseRecenters",
+                            "minPoseRenderCallbacks": "poseRenderCallbacks"]
+            if let field = counters[key], let minimum = value as? NSNumber {
+                guard let actual = snapshot[field] as? NSNumber, actual.uint64Value >= minimum.uint64Value else {
+                    throw error("\(field) below \(minimum)")
+                }
+                continue
+            }
             if key == "minPosition", let limit = value as? Double {
                 guard (snapshot["position"] as? Double ?? -1) >= limit else { throw error("Position below \(limit)") }; continue
             }
@@ -103,7 +132,7 @@ enum DiagnosticRunner {
             throw error("Assertion \(key): expected \(value), got \(snapshot[key] ?? "missing")")
         }
     }
-    private static func error(_ text: String) -> NSError { NSError(domain: "SpatialPlayer.Regression", code: 1, userInfo: [NSLocalizedDescriptionKey: text]) }
+    private static func error(_ text: String) -> NSError { NSError(domain: "SpatialUnlockPlayer.Regression", code: 1, userInfo: [NSLocalizedDescriptionKey: text]) }
     private static func emit(_ value: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes]) else { return }
         FileHandle.standardOutput.write(data); FileHandle.standardOutput.write(Data([10]))
