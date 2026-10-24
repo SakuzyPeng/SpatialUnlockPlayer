@@ -1,0 +1,5 @@
+/build/
+/SpatialPlayer.app/
+.DS_Store
+/build-*.log
+/Tests/Artifacts/
