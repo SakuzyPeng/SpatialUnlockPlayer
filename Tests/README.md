@@ -4,6 +4,22 @@
 
 播放列表回归缺少小型素材时会自动生成静音 PCM 和测试图案视频，也可先运行 `python3 Tests/generate_media.py`。生成物与本机测试配置保存在被 Git 忽略的 `Tests/Artifacts/`；不要提交个人媒体路径或设备 UID。Sony EQ 测试数据的来源与许可见 [Fixtures/README.md](Fixtures/README.md)。
 
+## 持续集成
+
+[GitHub Actions CI](https://github.com/SakuzyPeng/SpatialUnlockPlayer/actions/workflows/ci.yml) 在推送 `main`、提交 PR 和手动触发时运行。使用 GitHub 的 `xcode-27` ARM64 预览镜像，并选择 Xcode 27.0；镜像来源见[官方说明](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)。
+
+CI 依次运行播放顺序／会话、OSC 与 Apple 离线头追、参数 EQ、渲染配置四组回归，构建 Release／Debug／Diagnostics，检查实际 Release 动态库的离线渲染，并验证导出包的 ad hoc 签名、权限、构建路径、诊断入口和 MIT 许可证。ZIP 解压后会再次检查签名与可执行权限。工作流只需要仓库只读权限，不需要签名证书或额外 secrets。
+
+通过后可在该次运行的 Artifacts 下载 `SpatialUnlockPlayer-macos-arm64.zip` 和 SHA-256 校验文件；日志与应用包保留 7 天。应用继续使用 ad hoc 签名，未进行公证。CI 不保存独立构建缓存，也不上传私人媒体或硬件抓取数据。
+
+本机已有 XcodeGen 和 `requirements-ci.txt` 中的依赖时，可运行完全相同的检查：
+
+```sh
+zsh Scripts/ci.sh
+```
+
+真实 AVPlayer 界面、外部 PoseBridge 进程、AirPods／DAC、HAL 抓取以及 APAC／Atmos 媒体的集成验收仍使用下方本机测试流程；CI 的离线检查不替代这些验证。
+
 ## 高级空间音频设置
 
 ```sh

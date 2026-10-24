@@ -1,0 +1,2 @@
+# Only the offline EQ reference analysis needs a Python dependency.
+numpy==2.3.2

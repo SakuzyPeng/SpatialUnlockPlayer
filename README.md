@@ -166,6 +166,7 @@ open SpatialUnlockPlayer.xcodeproj
 - [输出对照实验](Tests/ROUTE_COMPARISON.md)：AirPods 与普通耳机的逐样本对照和 HAL 差异定位
 - [验证记录](Tests/VALIDATION.md)：各功能的验收范围与结果
 - [测试说明](Tests/README.md)：回归脚本、探针与复现命令
+- [持续集成](Tests/README.md#持续集成)：GitHub Actions 检查范围、ad hoc 应用包和日志
 
 ## 相关项目
 
