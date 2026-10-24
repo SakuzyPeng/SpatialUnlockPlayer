@@ -11,6 +11,7 @@ struct PlayerView: View {
     @State private var draggingPosition = false
     @State private var sliderPosition: Double = 0
     @State private var isFullScreen = false
+    @State private var namingPlaylist: PlaylistNameDraft?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,11 +38,20 @@ struct PlayerView: View {
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $dropTarget) { providers in
             model.importDrop(providers); return true
         }
-        .onAppear { selection = model.currentID; sliderPosition = model.position }
-        .onChange(of: model.currentID) { _, value in selection = value }
+        .onAppear { selection = visibleCurrentID; sliderPosition = model.position }
+        .onChange(of: model.currentID) { _, _ in
+            if model.browsedPlaylistID == model.playingPlaylistID { selection = model.currentID }
+        }
+        .onChange(of: model.browsedPlaylistID) { _, _ in selection = visibleCurrentID }
         .onChange(of: model.position) { _, value in if !draggingPosition { sliderPosition = value } }
         .onChange(of: model.playlist) { _, values in
-            if let id = selection, !values.contains(where: { $0.id == id }) { selection = model.currentID }
+            if let id = selection, !values.contains(where: { $0.id == id }) { selection = visibleCurrentID }
+        }
+        .sheet(item: $namingPlaylist) { draft in
+            PlaylistNameEditor(name: draft.name, isNew: draft.playlistID == nil) { name in
+                if let id = draft.playlistID { model.renamePlaylist(id, name: name) }
+                else { model.createPlaylist(name: name) }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { notification in
             if (notification.object as? NSWindow)?.identifier?.rawValue == "main" { isFullScreen = true }
@@ -49,6 +59,15 @@ struct PlayerView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { notification in
             if (notification.object as? NSWindow)?.identifier?.rawValue == "main" { isFullScreen = false }
         }
+    }
+
+    private var visibleCurrentID: UUID? {
+        model.browsedPlaylistID == model.playingPlaylistID ? model.currentID : nil
+    }
+
+    private func namePlaylist(_ id: UUID?) {
+        namingPlaylist = PlaylistNameDraft(playlistID: id,
+            name: id.flatMap { id in model.playlists.first { $0.id == id }?.name } ?? "新建播放列表")
     }
 
     private var playbackArea: some View {
@@ -90,18 +109,33 @@ struct PlayerView: View {
     }
 
     private var sidebar: some View {
-        VStack(spacing: 0) {
+        let listID = model.browsedPlaylistID
+        return VStack(spacing: 0) {
             HStack {
-                Text("播放列表").font(.headline)
+                Picker("播放列表", selection: Binding(get: { model.browsedPlaylistID }, set: model.browsePlaylist)) {
+                    ForEach(model.playlists) { list in Text(list.name).tag(list.id) }
+                }
+                .labelsHidden().accessibilityIdentifier("playlistPicker")
                 Text("\(model.playlist.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                Spacer()
                 Menu {
-                    Button("移除选中项目") { if let selection { model.remove([selection]) } }.disabled(selection == nil)
-                    Button("清空播放列表", role: .destructive, action: model.clear).disabled(model.playlist.isEmpty)
+                    Button("新建播放列表…") { namePlaylist(nil) }
+                    Button("重命名…") { namePlaylist(listID) }
+                    Button("删除播放列表", role: .destructive) { model.deletePlaylist(listID) }
+                    Divider()
+                    Button("移除选中项目") { if let selection { model.remove([selection], from: listID) } }.disabled(selection == nil)
+                    Button("清空播放列表", role: .destructive) { model.clear(listID) }.disabled(model.playlist.isEmpty)
                 } label: { Image(systemName: "ellipsis.circle") }
                 .menuStyle(.borderlessButton).fixedSize().accessibilityLabel("播放列表操作")
             }
-            .padding(14)
+            .padding(.horizontal, 10).padding(.vertical, 12)
+            if let list = model.playingPlaylist {
+                Button { model.browsePlaylist(list.id) } label: {
+                    Label("正在播放：\(list.name)", systemImage: "waveform")
+                        .font(.caption).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain).foregroundStyle(.secondary).padding(.horizontal, 14).padding(.bottom, 10)
+                .help("显示正在播放的列表").accessibilityIdentifier("showPlayingPlaylist")
+            }
             if model.playlist.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "text.badge.plus").font(.system(size: 24)).foregroundStyle(.tertiary)
@@ -112,7 +146,7 @@ struct PlayerView: View {
                     ForEach(model.playlist) { entry in
                         HStack(spacing: 10) {
                             Image(systemName: rowIcon(entry)).frame(width: 16)
-                                .foregroundStyle(entry.id == model.currentID ? Color.accentColor : .secondary)
+                                .foregroundStyle(entry.id == visibleCurrentID ? Color.accentColor : .secondary)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(entry.title).font(.callout).lineLimit(1)
                                 Text(entry.url.lastPathComponent).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
@@ -123,27 +157,27 @@ struct PlayerView: View {
                         .padding(.vertical, 5)
                         .contentShape(Rectangle())
                         .tag(entry.id)
-                        .onTapGesture(count: 2) { model.select(entry.id) }
+                        .onTapGesture(count: 2) { model.select(entry.id, in: listID) }
                         .contextMenu {
-                            Button("播放") { model.select(entry.id) }
+                            Button("播放") { model.select(entry.id, in: listID) }
                             Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) }
                             Divider()
-                            Button("移除") { model.remove([entry.id]) }
+                            Button("移除") { model.remove([entry.id], from: listID) }
                         }
                         .accessibilityLabel(entry.title)
-                        .accessibilityAction(named: "播放") { model.select(entry.id) }
+                        .accessibilityAction(named: "播放") { model.select(entry.id, in: listID) }
                     }
                 }
                 .listStyle(.sidebar)
-                .onKeyPress(.return) { if let selection { model.select(selection); return .handled }; return .ignored }
-                .onDeleteCommand { if let selection { model.remove([selection]) } }
+                .onKeyPress(.return) { if let selection { model.select(selection, in: listID); return .handled }; return .ignored }
+                .onDeleteCommand { if let selection { model.remove([selection], from: listID) } }
             }
         }
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
     }
 
     private func rowIcon(_ entry: PlaylistEntry) -> String {
-        if entry.id == model.currentID { return model.wantsToPlay ? "waveform" : "pause.fill" }
+        if entry.id == visibleCurrentID { return model.wantsToPlay ? "waveform" : "pause.fill" }
         return "play.circle"
     }
 
@@ -222,10 +256,19 @@ struct PlayerView: View {
                     Button(action: model.previous) { Image(systemName: "backward.end.fill") }.disabled(!model.canGoPrevious).accessibilityLabel("上一项")
                     Button(action: model.togglePlayback) {
                         Image(systemName: model.wantsToPlay ? "pause.fill" : "play.fill").font(.system(size: 25)).frame(width: 38, height: 32)
-                    }.disabled(model.currentEntry == nil).accessibilityLabel(model.wantsToPlay ? "暂停" : "播放").accessibilityIdentifier("playPause")
+                    }.disabled(!model.canPlay).accessibilityLabel(model.wantsToPlay ? "暂停" : "播放").accessibilityIdentifier("playPause")
                     Button(action: model.next) { Image(systemName: "forward.end.fill") }.disabled(!model.canGoNext).accessibilityLabel("下一项")
                 }
                 .buttonStyle(.plain).font(.system(size: 17))
+                Menu {
+                    Picker("播放模式", selection: Binding(get: { model.playbackMode }, set: model.setPlaybackMode)) {
+                        ForEach(PlaybackMode.allCases) { mode in Label(mode.title, systemImage: mode.symbol).tag(mode) }
+                    }.pickerStyle(.inline)
+                } label: {
+                    Label(model.playbackMode.title, systemImage: model.playbackMode.symbol).font(.caption)
+                }
+                .fixedSize().menuStyle(.borderlessButton).accessibilityIdentifier("playbackMode")
+                .help("播放模式：\(model.playbackMode.title)")
                 Spacer(minLength: 10)
                 HStack(spacing: 7) {
                     Image(systemName: model.volume == 0 ? "speaker.slash" : "speaker.wave.2").foregroundStyle(.secondary)
@@ -255,6 +298,38 @@ struct PlayerView: View {
             Button { model.errorMessage = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("关闭提示")
         }
         .padding(12).background(Color.orange.opacity(0.09))
+    }
+}
+
+private struct PlaylistNameDraft: Identifiable {
+    let id = UUID()
+    let playlistID: UUID?
+    let name: String
+}
+
+private struct PlaylistNameEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var focused: Bool
+    @State var name: String
+    let isNew: Bool
+    let onSave: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(isNew ? "新建播放列表" : "重命名播放列表").font(.headline)
+            TextField("列表名称", text: $name)
+                .textFieldStyle(.roundedBorder).focused($focused)
+                .accessibilityIdentifier("playlistName")
+            HStack {
+                Spacer()
+                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("保存") { onSave(name); dismiss() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(24).frame(width: 360)
+        .onAppear { focused = true }
     }
 }
 

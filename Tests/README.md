@@ -64,15 +64,28 @@ env -u DYLD_INSERT_LIBRARIES \
 
 ## 播放列表持久化
 
+纯 Swift 顺序决策与会话测试无需播放设备：
+
+```sh
+zsh Tests/playback_test.sh
+```
+
+覆盖顺序／列表循环／单曲循环的边界、空列表与单项列表、随机每轮完整性与轮次交界、历史回退与前进、增删条目、v1 迁移、v2 保存及无效引用修复。使用可控的打乱函数，编译复用系统模块缓存。
+
 在诊断构建完成后运行：
 
 ```sh
 python3 Tests/persistence_test.py
+python3 Tests/playback_integration_test.py
 ```
 
-该脚本使用已有视频、短 PCM 测试素材及本机 APAC 文件，连续启动 6 次应用，验证列表顺序、重复文件、当前曲目、暂停位置、移除、文件暂时不可用，以及清空后不再恢复。通过独立的 `local.sakuzy.SpatialUnlockPlayer.Regression` 偏好域运行，不改动日常使用的列表和设置。
+持久化脚本使用已有视频、短 PCM 测试素材及本机 APAC 文件，通过多个独立进程验证旧单列表迁移、列表顺序、重复文件、当前曲目、暂停位置、移除、文件暂时不可用，以及多列表、空列表、名称和全局播放模式恢复。清空后仍保留列表身份和名称；删除最后一份列表会留下空的“默认列表”。
+
+播放集成脚本使用实际 AVPlayer 验证自然结束后的四种模式、随机历史、浏览其他列表时自动续播、NSItemProvider 导入期间切换列表、快速切换后的旧回调拒绝、删除列表及失败后暂停。复用小型视频和短音频，不复制用户音乐。两个脚本均使用独立的 `local.sakuzy.SpatialUnlockPlayer.Regression` 偏好域，须顺序运行，不改动日常使用的列表和设置。
 
 首次启动清空测试偏好，后续测试用 `SPATIALUNLOCKPLAYER_TEST_RESTORE_SESSION=1` 保留上一进程保存的状态。每次启动的脚本、结果与日志保存在 `Artifacts/persistence-*`。
+
+Diagnostics 保留原有 `mode` 空间音频操作，新增 `playbackMode`（`sequential`／`repeatAll`／`repeatOne`／`shuffle`）、`createPlaylist`、`renamePlaylist`、`deletePlaylist` 和按索引选浏览列表的 `browsePlaylist`。`finish` 定位到结尾附近并等待真实完播通知；`awaitState` 等待指定快照字段匹配。`playlistCount` 表示浏览列表的条目数，`playingPlaylistCount` 表示正在播放列表的条目数，`listCount` 表示列表数量。
 
 ## 界面检查
 

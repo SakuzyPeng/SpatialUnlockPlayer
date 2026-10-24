@@ -7,7 +7,10 @@ import UniformTypeIdentifiers
 final class PlayerModel: ObservableObject {
     let devices = AudioDeviceCatalog()
     let headTracking: HeadTrackingModel
-    @Published private(set) var playlist: [PlaylistEntry] = []
+    @Published private(set) var playlists: [Playlist]
+    @Published private(set) var browsedPlaylistID: UUID
+    @Published private(set) var playingPlaylistID: UUID?
+    @Published private(set) var playbackMode: PlaybackMode = .sequential
     @Published private(set) var currentID: UUID?
     @Published private(set) var player: AVPlayer?
     @Published private(set) var metadata = MediaMetadata()
@@ -42,16 +45,29 @@ final class PlayerModel: ObservableObject {
     private var shuttingDown = false
     private var errorDetails = ""
     private var lastSessionSave: TimeInterval = 0
+    private var order = PlaybackOrder()
+    #if SPATIAL_DIAGNOSTICS
+    private(set) var completedItemCount = 0
+    #endif
 
-    var currentEntry: PlaylistEntry? { playlist.first { $0.id == currentID } }
-    var currentIndex: Int? { playlist.firstIndex { $0.id == currentID } }
-    var canGoPrevious: Bool { (currentIndex ?? 0) > 0 }
-    var canGoNext: Bool { currentIndex.map { $0 + 1 < playlist.count } ?? !playlist.isEmpty }
+    var browsedPlaylist: Playlist? { playlists.first { $0.id == browsedPlaylistID } }
+    var playingPlaylist: Playlist? { playlists.first { $0.id == playingPlaylistID } }
+    var playlist: [PlaylistEntry] { browsedPlaylist?.entries ?? [] }
+    private var playingEntries: [PlaylistEntry] { playingPlaylist?.entries ?? [] }
+    private var playingIDs: [UUID] { playingEntries.map(\.id) }
+    var currentEntry: PlaylistEntry? { playingEntries.first { $0.id == currentID } }
+    var currentIndex: Int? { playingEntries.firstIndex { $0.id == currentID } }
+    var canGoPrevious: Bool { order.canPrevious(playingIDs, current: currentID, mode: playbackMode) }
+    var canGoNext: Bool { order.canNext(playingIDs, current: currentID, mode: playbackMode) }
+    var canPlay: Bool { currentEntry != nil || !playlist.isEmpty }
     var isReady: Bool { player?.currentItem?.status == .readyToPlay && !isLoading && !isSeeking }
     var selectedOutput: AudioOutputDevice? { devices.resolve(outputSelection) }
     var displayTitle: String { metadata.title.isEmpty ? currentEntry?.title ?? "SpatialUnlock Player" : metadata.title }
 
     init(defaults: UserDefaults = .standard) {
+        let initial = Playlist(name: "默认列表")
+        self.playlists = [initial]
+        self.browsedPlaylistID = initial.id
         self.defaults = defaults
         self.headTracking = HeadTrackingModel(defaults: defaults)
         self.volume = defaults.object(forKey: "volume") == nil ? 0.1 : min(1, max(0, defaults.float(forKey: "volume")))
@@ -63,19 +79,64 @@ final class PlayerModel: ObservableObject {
         updateHeadTrackingPolicy()
         devices.onChange = { [weak self] in self?.devicesChanged() }
         if let session = PlaybackSession.load(from: defaults) {
-            playlist = session.entries
+            playlists = session.playlists
+            browsedPlaylistID = session.browsedPlaylistID
+            playingPlaylistID = session.playingPlaylistID
+            playbackMode = session.playbackMode
             currentID = session.currentID
             position = session.position
+            order.reset(playingIDs, current: currentID)
+            saveSession()
             if currentEntry != nil { rebuild(at: position, autoplay: false) }
         }
     }
 
     private func saveSession() {
-        PlaybackSession(entries: playlist, currentID: currentID, position: position).save(to: defaults)
+        PlaybackSession(playlists: playlists, browsedPlaylistID: browsedPlaylistID,
+                        playingPlaylistID: playingPlaylistID, currentID: currentID,
+                        position: position, playbackMode: playbackMode).save(to: defaults)
         lastSessionSave = ProcessInfo.processInfo.systemUptime
     }
 
+    func browsePlaylist(_ id: UUID) {
+        guard playlists.contains(where: { $0.id == id }) else { return }
+        browsedPlaylistID = id
+        saveSession()
+    }
+
+    @discardableResult func createPlaylist(name: String = "新建播放列表") -> UUID {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let list = Playlist(name: name.isEmpty ? "新建播放列表" : name)
+        playlists.append(list)
+        browsePlaylist(list.id)
+        return list.id
+    }
+
+    func renamePlaylist(_ id: UUID, name: String) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let index = playlists.firstIndex(where: { $0.id == id }) else { return }
+        playlists[index].name = name
+        saveSession()
+    }
+
+    func deletePlaylist(_ id: UUID) {
+        guard let index = playlists.firstIndex(where: { $0.id == id }) else { return }
+        if playingPlaylistID == id { stopPlayback() }
+        playlists.remove(at: index)
+        if playlists.isEmpty { playlists = [Playlist(name: "默认列表")] }
+        if browsedPlaylistID == id { browsedPlaylistID = playlists[min(index, playlists.count - 1)].id }
+        saveSession()
+    }
+
+    func setPlaybackMode(_ mode: PlaybackMode) {
+        guard mode != playbackMode else { return }
+        playbackMode = mode
+        order.reset(playingIDs, current: currentID)
+        saveSession()
+    }
+
     func presentOpenPanel() {
+        let targetID = browsedPlaylistID
         let panel = NSOpenPanel()
         panel.title = "加入播放列表"
         panel.prompt = "打开"
@@ -84,24 +145,28 @@ final class PlayerModel: ObservableObject {
         panel.canChooseDirectories = false
         panel.begin { [weak self] response in
             guard response == .OK else { return }
-            self?.addFiles(panel.urls)
+            self?.addFiles(panel.urls, to: targetID)
         }
     }
 
-    func addFiles(_ urls: [URL]) {
+    func addFiles(_ urls: [URL], to playlistID: UUID? = nil) {
+        let targetID = playlistID ?? browsedPlaylistID
+        guard let index = playlists.firstIndex(where: { $0.id == targetID }) else { return }
         let localFiles = urls.filter { url in
             guard url.isFileURL else { return false }
             return (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
         }
         guard !localFiles.isEmpty else { errorMessage = "请选择本地音频或视频文件。"; return }
         defer { saveSession() }
-        let wasEmpty = playlist.isEmpty
+        let wasEmpty = playlists[index].entries.isEmpty
         let entries = localFiles.map { PlaylistEntry(url: $0.standardizedFileURL) }
-        playlist.append(contentsOf: entries)
-        if wasEmpty, let first = entries.first { select(first.id) }
+        playlists[index].entries.append(contentsOf: entries)
+        if playingPlaylistID == targetID { order.synchronize(playingIDs) }
+        if currentEntry == nil, wasEmpty, let first = entries.first { select(first.id, in: targetID) }
     }
 
     func importDrop(_ providers: [NSItemProvider]) {
+        let targetID = browsedPlaylistID
         Task {
             var urls: [URL] = []
             for provider in providers {
@@ -112,34 +177,57 @@ final class PlayerModel: ObservableObject {
                 }
                 if let url { urls.append(url) }
             }
-            addFiles(urls)
+            addFiles(urls, to: targetID)
         }
     }
 
-    func select(_ id: UUID, autoplay: Bool = true) {
-        guard playlist.contains(where: { $0.id == id }) else { return }
+    func select(_ id: UUID, in playlistID: UUID, autoplay: Bool = true) {
+        startEntry(id, in: playlistID, autoplay: autoplay, resetOrder: true)
+    }
+
+    private func startEntry(_ id: UUID, in playlistID: UUID, autoplay: Bool, resetOrder: Bool) {
+        guard playlists.contains(where: { $0.id == playlistID && $0.entries.contains { $0.id == id } }) else { return }
         defer { saveSession() }
+        playingPlaylistID = playlistID
         currentID = id
+        if resetOrder { order.reset(playingIDs, current: id) }
         metadata = MediaMetadata(); position = 0; duration = 0
         rebuild(at: 0, autoplay: autoplay)
     }
 
-    func remove(_ ids: Set<UUID>) {
+    func remove(_ ids: Set<UUID>, from playlistID: UUID) {
+        guard let listIndex = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
         defer { saveSession() }
         let oldIndex = currentIndex ?? 0
-        let removingCurrent = currentID.map { ids.contains($0) } ?? false
+        let removingCurrent = playingPlaylistID == playlistID && (currentID.map { ids.contains($0) } ?? false)
+        let replacement = removingCurrent ? (
+            playingEntries.dropFirst(oldIndex + 1).first { !ids.contains($0.id) }
+                ?? playingEntries.prefix(oldIndex).last { !ids.contains($0.id) }
+        ) : nil
         let resume = wantsToPlay
-        playlist.removeAll { ids.contains($0.id) }
-        if playlist.isEmpty { clear() }
-        else if removingCurrent { select(playlist[min(oldIndex, playlist.count - 1)].id, autoplay: resume) }
+        playlists[listIndex].entries.removeAll { ids.contains($0.id) }
+        if playingPlaylistID == playlistID {
+            order.synchronize(playingIDs)
+            if playingEntries.isEmpty { stopPlayback() }
+            else if let replacement {
+                select(replacement.id, in: playlistID, autoplay: resume)
+            }
+        }
     }
 
-    func clear() {
+    func clear(_ playlistID: UUID) {
+        guard let index = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
+        if playingPlaylistID == playlistID { stopPlayback() }
+        playlists[index].entries.removeAll()
+        saveSession()
+    }
+
+    private func stopPlayback() {
         invalidatePlayback()
-        playlist.removeAll(); currentID = nil; metadata = MediaMetadata()
+        playingPlaylistID = nil; currentID = nil; metadata = MediaMetadata()
+        order.reset([], current: nil)
         position = 0; duration = 0; wantsToPlay = false; isLoading = false; isSeeking = false; errorMessage = nil
         SpatialShimSetConfiguration(0, false)
-        saveSession()
     }
 
     func togglePlayback() {
@@ -147,7 +235,7 @@ final class PlayerModel: ObservableObject {
     }
     func play() {
         guard currentEntry != nil else {
-            if let first = playlist.first { select(first.id) }
+            if let first = playlist.first { select(first.id, in: browsedPlaylistID) }
             return
         }
         guard selectedOutput != nil else { errorMessage = "所选输出设备不可用，请选择另一个输出。"; return }
@@ -162,13 +250,27 @@ final class PlayerModel: ObservableObject {
         saveSession()
     }
     func previous() {
-        guard let index = currentIndex, index > 0 else { return }
-        select(playlist[index - 1].id)
+        guard let listID = playingPlaylistID,
+              let id = order.previous(playingIDs, current: currentID, mode: playbackMode) else { return }
+        startEntry(id, in: listID, autoplay: true, resetOrder: false)
     }
     func next() {
-        guard let index = currentIndex else { if let first = playlist.first { select(first.id) }; return }
-        guard index + 1 < playlist.count else { pause(); return }
-        select(playlist[index + 1].id)
+        guard let listID = playingPlaylistID,
+              let id = order.next(playingIDs, current: currentID, mode: playbackMode, automatic: false) else { return }
+        startEntry(id, in: listID, autoplay: true, resetOrder: false)
+    }
+
+    private func playbackEnded() {
+        #if SPATIAL_DIAGNOSTICS
+        completedItemCount += 1
+        #endif
+        position = duration; isPlaying = false
+        guard wantsToPlay, let listID = playingPlaylistID else { saveSession(); return }
+        guard let id = order.next(playingIDs, current: currentID, mode: playbackMode, automatic: true) else {
+            wantsToPlay = false; saveSession(); return
+        }
+        if id == currentID { seek(to: 0) }
+        else { startEntry(id, in: listID, autoplay: true, resetOrder: false) }
     }
 
     func seek(to requested: Double) {
@@ -229,7 +331,7 @@ final class PlayerModel: ObservableObject {
     }
 
     private func rebuild(at restoredPosition: Double, autoplay: Bool) {
-        guard let entry = currentEntry else { return }
+        guard let entry = currentEntry, let listID = playingPlaylistID else { return }
         invalidatePlayback()
         let ticket = generation
         wantsToPlay = autoplay; isLoading = true; isSeeking = false; errorMessage = nil; errorDetails = ""
@@ -255,9 +357,10 @@ final class PlayerModel: ObservableObject {
                 let info = try await MediaMetadata.load(asset: asset)
                 guard let self, !Task.isCancelled, self.generation == ticket else { return }
                 self.metadata = info; self.duration = info.duration
-                if let index = self.playlist.firstIndex(where: { $0.id == entry.id }) {
-                    self.playlist[index].failure = nil
-                    if !info.title.isEmpty { self.playlist[index].title = info.title }
+                if let listIndex = self.playlists.firstIndex(where: { $0.id == listID }),
+                   let index = self.playlists[listIndex].entries.firstIndex(where: { $0.id == entry.id }) {
+                    self.playlists[listIndex].entries[index].failure = nil
+                    if !info.title.isEmpty { self.playlists[listIndex].entries[index].title = info.title }
                 }
                 let item = AVPlayerItem(asset: asset)
                 item.allowedAudioSpatializationFormats = self.policy.allowSpatialization ? .monoStereoAndMultichannel : []
@@ -305,8 +408,7 @@ final class PlayerModel: ObservableObject {
         notificationObservers.append(NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.generation == ticket else { return }
-                self.position = self.duration; self.wantsToPlay = false; self.isPlaying = false
-                if self.canGoNext { self.next() } else { self.saveSession() }
+                self.playbackEnded()
             }
         })
         notificationObservers.append(NotificationCenter.default.addObserver(forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main) { [weak self] note in
@@ -346,7 +448,9 @@ final class PlayerModel: ObservableObject {
         if spatialMode == .off, metadata.audioDescription.hasPrefix("APAC"), errorDetails.contains("1718449215") {
             message = "系统无法在当前输出上以关闭空间化的方式播放此 APAC 文件。请切回“自动”或“强制耳机空间音频”，再继续播放。"
         } else { message = text }
-        if let index = currentIndex { playlist[index].failure = message }
+        if let listIndex = playlists.firstIndex(where: { $0.id == playingPlaylistID }), let index = currentIndex {
+            playlists[listIndex].entries[index].failure = message
+        }
         invalidatePlayback()
         wantsToPlay = false; isLoading = false; isSeeking = false; errorMessage = message
         SpatialShimSetConfiguration(0, false)
@@ -375,6 +479,12 @@ final class PlayerModel: ObservableObject {
     func diagnosticSnapshot() -> [String: Any] {
         let shim = SpatialShimGetStatus()
         var result: [String: Any] = ["file": currentEntry?.url.path ?? "", "playlistCount": playlist.count,
+                "listCount": playlists.count, "browsedPlaylistID": browsedPlaylistID.uuidString,
+                "playingPlaylistID": playingPlaylistID?.uuidString ?? "",
+                "browsedPlaylistName": browsedPlaylist?.name ?? "", "playingPlaylistName": playingPlaylist?.name ?? "",
+                "playingPlaylistCount": playingEntries.count, "currentID": currentID?.uuidString ?? "",
+                "currentIndex": currentIndex ?? -1, "playbackMode": playbackMode.rawValue,
+                "canGoPrevious": canGoPrevious, "canGoNext": canGoNext,
                 "position": position, "duration": duration, "ready": isReady, "playing": isPlaying,
                 "wantsToPlay": wantsToPlay, "loading": isLoading, "seeking": isSeeking,
                 "mode": spatialMode.rawValue, "outputSelection": outputSelection,
@@ -385,6 +495,9 @@ final class PlayerModel: ObservableObject {
                 "hasVideo": metadata.hasVideo, "sourceAudio": metadata.audioDescription,
                 "error": errorMessage ?? "", "errorDetails": errorDetails]
         result.merge(headTracking.diagnosticSnapshot()) { _, new in new }
+        #if SPATIAL_DIAGNOSTICS
+        result["completedItemCount"] = completedItemCount
+        #endif
         return result
     }
     private func updateHeadTrackingPolicy() {

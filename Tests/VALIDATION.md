@@ -1,5 +1,18 @@
 # SpatialUnlock Player 首版验证记录
 
+## 2026-10-24：播放模式与多播放列表
+
+- 增加顺序播放、列表循环、单曲循环和随机播放；模式全局保存。随机每轮覆盖全部条目，避免轮次交界连续重复，上一项和回退后的下一项沿实际历史移动。
+- 命名列表支持新建、重命名、删除、清空与浏览切换。浏览列表和播放列表分开记录，自动续播和切歌跟随播放列表；打开与异步拖入绑定发起时的列表。移除当前曲目选择后续仍保留的邻项，没有则选择前项，并保留暂停意图。
+- `PlaybackSession` v2 保留全部列表、空列表、浏览与播放列表、当前曲目和进度；v1 自动迁移为“默认列表”，条目 ID、重复文件和位置保持。重新启动保持暂停，离线文件引用继续保留。
+- `zsh Tests/playback_test.sh` 通过：循环边界、空／单项列表、20 轮可控随机顺序、轮次交界、历史回退／前进、增删、迁移、空列表恢复和无效引用修复。
+- `python3 Tests/playback_integration_test.py` 四组真实 AVPlayer 场景全部通过，共 155 个操作／断言步骤，覆盖真实完播通知、四种模式、随机历史与重复文件、多列表归属、导入中切换列表、快速切换、批量移除当前曲目及失败后暂停。结果位于 `Tests/Artifacts/persistence-playback-*`、`persistence-shuffle-rounds-*`、`persistence-list-ownership-*` 和 `persistence-remove-and-failure-*`。
+- `python3 Tests/persistence_test.py` 11 次独立进程、52 个步骤通过，覆盖 v1 迁移、原有保存与离线文件恢复、多列表和空列表、全局模式、删除当前／最后一份列表，以及恢复后暂停。
+- 原有 smoke、regression、available-routes、apac24-off、disconnect-drop 五组播放／空间音频场景通过。纯头追协议和真实 Apple Audio Unit 离线测试通过；PoseBridge quaternion、euler、端口占用三组集成共 64 步通过，渲染错误为 0。本轮没有增加实体传感器或 AirPods 硬件验收。
+- 隔离偏好下的真实窗口验证：新建与重命名连续打开时的标题、名称初值和保存状态正确；文件面板追加到浏览列表；双击切歌、返回正在播放列表、底部模式与菜单栏选择、紧凑窗口和视频全屏控件正常。异步拖入通过真实 NSItemProvider 链路检查，未补做 Finder 跨窗口鼠标拖放。
+- Diagnostics 与 Release 构建通过，根目录正式版与 Release 产物一致，签名与 Info.plist 校验通过；确认正式版不含诊断脚本入口或 AudioQueue 诊断钩子。正式版实际启动后，日常使用的列表、当前曲目和暂停位置正常恢复。
+- 额外将完整 regression 场景的音量强制设为 0 时，视频播放后暂停并精确定位到 6 秒连续两次超时，状态保持 seeking；使用原脚本的默认音量时全部通过。这一静音变体仍有待排查，不能计作通过；本轮保留了实际失败记录 `Tests/Artifacts/persistence-modes-base-regression-result.json`。
+
 ## 2026-10-23：外部 PoseBridge OSC 接入
 
 - 接入方式按用户选择为外部 OSC 接收，没有嵌入 PoseBridge 动态库或管理传感器。默认仅监听 `127.0.0.1:9000`，支持 OSC 3 quaternion/euler 两种姿态消息及独立 info/status。

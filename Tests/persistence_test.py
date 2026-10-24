@@ -6,6 +6,7 @@ from pathlib import Path
 import plistlib
 import shutil
 import subprocess
+import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = ROOT / "Tests/Artifacts"
@@ -49,9 +50,31 @@ def ready():
     return {"action": "awaitReady"}
 
 
-assert VIDEO.is_file() and APAC.is_file(), "Build the existing media fixtures first."
-shutil.copyfile(ARTIFACTS / "short-a.wav", MISSING)
-try:
+def entries(session, index=0):
+    return session["playlists"][index]["entries"]
+
+
+def main():
+    assert VIDEO.is_file() and APAC.is_file(), "Build the existing media fixtures first."
+    shutil.copyfile(ARTIFACTS / "short-a.wav", MISSING)
+    try:
+        exercise()
+    finally:
+        MISSING.unlink(missing_ok=True)
+        OFFLINE.unlink(missing_ok=True)
+
+
+def exercise():
+    legacy_entries = [dict(id=str(uuid.uuid4()), url=VIDEO.as_uri(), title="视频") for _ in range(2)]
+    legacy = dict(version=1, entries=legacy_entries, currentID=legacy_entries[1]["id"], position=6)
+    subprocess.run(["/usr/bin/defaults", "import", DOMAIN, "-"],
+                   input=plistlib.dumps({"playbackSession": json.dumps(legacy).encode(), "volume": 0}), check=True)
+    migrated = run("v1-migration", [ready(), check(listCount=1, playlistCount=2, browsedPlaylistName="默认列表",
+                    wantsToPlay=False, playing=False, minPosition=5.9, maxPosition=6.1)])
+    assert migrated["version"] == 2
+    assert [e["id"].lower() for e in entries(migrated)] == [e["id"] for e in legacy_entries]
+    assert migrated["currentID"].lower() == legacy["currentID"]
+
     first = run("save", [
         {"action": "output", "value": "BuiltInHeadphoneOutputDevice"},
         {"action": "volume", "value": 0},
@@ -60,10 +83,10 @@ try:
         {"action": "seek", "value": 30}, ready(),
         check(playlistCount=4, wantsToPlay=False, playing=False, minPosition=29.9, maxPosition=30.1),
     ], restore=False)
-    assert len(first["entries"]) == 4
-    assert len({entry["id"] for entry in first["entries"]}) == 4
-    assert first["entries"][0]["url"] == first["entries"][2]["url"], "Duplicate files must survive."
-    assert first["currentID"] == first["entries"][1]["id"]
+    assert len(entries(first)) == 4
+    assert len({entry["id"] for entry in entries(first)}) == 4
+    assert entries(first)[0]["url"] == entries(first)[2]["url"], "Duplicate files must survive."
+    assert first["currentID"] == entries(first)[1]["id"]
     MISSING.replace(OFFLINE)
 
     removed = run("restore-remove", [
@@ -72,7 +95,7 @@ try:
               minPosition=29.9, maxPosition=30.1),
         {"action": "remove", "indices": [0]}, check(playlistCount=3),
     ])
-    assert [entry["id"] for entry in removed["entries"]] == [entry["id"] for entry in first["entries"][1:]]
+    assert [entry["id"] for entry in entries(removed)] == [entry["id"] for entry in entries(first)[1:]]
     assert removed["currentID"] == first["currentID"]
 
     unavailable = run("missing", [
@@ -80,7 +103,7 @@ try:
         {"action": "select", "index": 2, "autoplay": False},
         {"action": "awaitError"}, check(playlistCount=3, wantsToPlay=False, playing=False, hasError=True),
     ])
-    assert unavailable["currentID"] == removed["entries"][2]["id"]
+    assert unavailable["currentID"] == entries(removed)[2]["id"]
 
     switched = run("missing-recover", [
         {"action": "awaitError"}, check(playlistCount=3, wantsToPlay=False, playing=False),
@@ -88,15 +111,44 @@ try:
         {"action": "seek", "value": 6}, ready(),
         check(playlistCount=3, fileContains=VIDEO.name, minPosition=5.9, maxPosition=6.1, wantsToPlay=False),
     ])
-    assert switched["currentID"] == removed["entries"][1]["id"]
+    assert switched["currentID"] == entries(removed)[1]["id"]
 
     cleared = run("clear", [
         ready(), check(playlistCount=3, fileContains=VIDEO.name, minPosition=5.9, maxPosition=6.1,
                        wantsToPlay=False, playing=False),
         {"action": "clear"}, check(playlistCount=0),
     ])
-    assert cleared is None
-    assert run("empty", [check(playlistCount=0, ready=False, wantsToPlay=False, playing=False)]) is None
-finally:
-    MISSING.unlink(missing_ok=True)
-    OFFLINE.unlink(missing_ok=True)
+    assert entries(cleared) == [] and cleared.get("currentID") is None
+    empty = run("empty", [check(playlistCount=0, ready=False, wantsToPlay=False, playing=False)])
+    assert empty["playlists"] == cleared["playlists"]
+
+    multiple = run("multiple-save", [
+        {"action": "createPlaylist", "name": "音乐"},
+        {"action": "add", "paths": [str(VIDEO), str(APAC)]},
+        {"action": "select", "index": 1, "autoplay": False}, ready(),
+        {"action": "seek", "value": 12}, ready(),
+        {"action": "playbackMode", "value": "shuffle"},
+        {"action": "createPlaylist", "name": "待整理"},
+        {"action": "renamePlaylist", "name": "稍后播放"},
+        check(listCount=3, playlistCount=0, playingPlaylistName="音乐", playbackMode="shuffle", wantsToPlay=False),
+    ])
+    restored = run("multiple-restore", [
+        ready(), check(listCount=3, playlistCount=0, playingPlaylistCount=2,
+            browsedPlaylistName="稍后播放", playingPlaylistName="音乐", playbackMode="shuffle",
+            wantsToPlay=False, playing=False, minPosition=11.9, maxPosition=12.1, canGoPrevious=False),
+    ])
+    assert restored["playlists"] == multiple["playlists"]
+    assert restored["currentID"] == multiple["currentID"]
+    assert restored["browsedPlaylistID"] == multiple["browsedPlaylistID"]
+    last = run("delete-lists", [
+        ready(), {"action": "deletePlaylist"}, check(listCount=2, playingPlaylistName="音乐"),
+        {"action": "deletePlaylist"}, check(listCount=1, playingPlaylistName="", ready=False, wantsToPlay=False),
+        {"action": "deletePlaylist"}, check(listCount=1, playlistCount=0, browsedPlaylistName="默认列表"),
+    ])
+    assert len(last["playlists"]) == 1 and entries(last) == []
+    run("last-empty-restore", [check(listCount=1, playlistCount=0, browsedPlaylistName="默认列表",
+        playbackMode="shuffle", wantsToPlay=False, playing=False)])
+
+
+if __name__ == "__main__":
+    main()

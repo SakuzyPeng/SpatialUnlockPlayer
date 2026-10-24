@@ -2,15 +2,6 @@ import AppKit
 @preconcurrency import AVFoundation
 import CoreMedia
 
-struct PlaylistEntry: Identifiable, Equatable, Codable {
-    let id: UUID
-    let url: URL
-    var title: String
-    var failure: String? = nil
-    private enum CodingKeys: String, CodingKey { case id, url, title }
-    init(url: URL) { self.id = UUID(); self.url = url; self.title = url.deletingPathExtension().lastPathComponent }
-}
-
 struct MediaMetadata {
     var title = ""
     var artist = ""

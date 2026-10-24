@@ -66,9 +66,13 @@ struct SpatialUnlockPlayerApp: App {
             }
             CommandMenu("播放") {
                 Button(model.wantsToPlay ? "暂停" : "播放", action: model.togglePlayback).keyboardShortcut(.space, modifiers: [])
-                    .disabled(model.currentEntry == nil)
+                    .disabled(!model.canPlay)
                 Button("上一项", action: model.previous).keyboardShortcut(.leftArrow, modifiers: .command).disabled(!model.canGoPrevious)
                 Button("下一项", action: model.next).keyboardShortcut(.rightArrow, modifiers: .command).disabled(!model.canGoNext)
+                Divider()
+                Picker("播放模式", selection: Binding(get: { model.playbackMode }, set: model.setPlaybackMode)) {
+                    ForEach(PlaybackMode.allCases) { mode in Text(mode.title).tag(mode) }
+                }.pickerStyle(.inline)
                 Divider()
                 Button("后退 10 秒") { model.seek(to: model.position - 10) }.keyboardShortcut(.leftArrow, modifiers: [.command, .option])
                 Button("前进 10 秒") { model.seek(to: model.position + 10) }.keyboardShortcut(.rightArrow, modifiers: [.command, .option])

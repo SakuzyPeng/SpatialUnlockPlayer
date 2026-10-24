@@ -25,11 +25,21 @@ enum DiagnosticRunner {
                 case "select":
                     let index = step["index"] as? Int ?? -1
                     guard model.playlist.indices.contains(index) else { throw error("Invalid playlist index \(index)") }
-                    model.select(model.playlist[index].id, autoplay: step["autoplay"] as? Bool ?? true)
+                    model.select(model.playlist[index].id, in: model.browsedPlaylistID, autoplay: step["autoplay"] as? Bool ?? true)
                 case "remove":
                     let indices = step["indices"] as? [Int] ?? []
-                    model.remove(Set(indices.compactMap { model.playlist.indices.contains($0) ? model.playlist[$0].id : nil }))
-                case "clear": model.clear()
+                    model.remove(Set(indices.compactMap { model.playlist.indices.contains($0) ? model.playlist[$0].id : nil }), from: model.browsedPlaylistID)
+                case "clear": model.clear(model.browsedPlaylistID)
+                case "createPlaylist": model.createPlaylist(name: step["name"] as? String ?? "新建播放列表")
+                case "renamePlaylist": model.renamePlaylist(model.browsedPlaylistID, name: step["name"] as? String ?? "")
+                case "deletePlaylist": model.deletePlaylist(model.browsedPlaylistID)
+                case "browsePlaylist":
+                    let index = step["index"] as? Int ?? -1
+                    guard model.playlists.indices.contains(index) else { throw error("Invalid list index \(index)") }
+                    model.browsePlaylist(model.playlists[index].id)
+                case "playbackMode":
+                    guard let raw = step["value"] as? String, let mode = PlaybackMode(rawValue: raw) else { throw error("Invalid playback mode") }
+                    model.setPlaybackMode(mode)
                 case "play": model.play()
                 case "pause": model.pause()
                 case "next": model.next()
@@ -47,6 +57,18 @@ enum DiagnosticRunner {
                     let count = step["value"] as? Int ?? 0
                     try await until(timeout: 10) { model.playlist.count == count }
                 case "seek": model.seek(to: step["value"] as? Double ?? 0)
+                case "finish":
+                    let count = model.completedItemCount
+                    model.play()
+                    model.seek(to: max(0, model.duration - 0.15))
+                    try await until(timeout: 15) { model.completedItemCount > count }
+                case "awaitState":
+                    try await until(timeout: step["timeout"] as? Double ?? 15) {
+                        do {
+                            try verify(step["expect"] as? [String: Any] ?? [:], snapshot: model.diagnosticSnapshot())
+                            return true
+                        } catch { return false }
+                    }
                 case "volume": model.volume = Float(step["value"] as? Double ?? 0.1)
                 case "poseStart":
                     model.headTracking.portText = String(step["port"] as? Int ?? 9000)

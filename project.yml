@@ -38,6 +38,9 @@ fileGroups:
   - Tests/README.md
   - Tests/VALIDATION.md
   - Tests/persistence_test.py
+  - Tests/playback_integration_test.py
+  - Tests/playback_order_test.swift
+  - Tests/playback_test.sh
   - Tests/shim_test.c
   - Scripts/generate_app_icon.swift
 
