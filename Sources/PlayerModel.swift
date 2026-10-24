@@ -8,6 +8,7 @@ final class PlayerModel: ObservableObject {
     let devices = AudioDeviceCatalog()
     let headTracking: HeadTrackingModel
     let equalizer: EqualizerModel
+    let advancedAudio: AdvancedAudioModel
     @Published private(set) var playlists: [Playlist]
     @Published private(set) var browsedPlaylistID: UUID
     @Published private(set) var playingPlaylistID: UUID?
@@ -72,6 +73,7 @@ final class PlayerModel: ObservableObject {
         self.defaults = defaults
         self.headTracking = HeadTrackingModel(defaults: defaults)
         self.equalizer = EqualizerModel(defaults: defaults)
+        self.advancedAudio = AdvancedAudioModel(defaults: defaults)
         self.volume = defaults.object(forKey: "volume") == nil ? 0.1 : min(1, max(0, defaults.float(forKey: "volume")))
         self.spatialMode = SpatialMode(rawValue: defaults.string(forKey: "spatialMode") ?? "") ?? .automatic
         let saved = defaults.string(forKey: "outputUID") ?? "system"
@@ -82,6 +84,12 @@ final class PlayerModel: ObservableObject {
             guard let self else { return .init() }
             return .init(hasItem: self.player?.currentItem != nil, playing: self.isPlaying, loading: self.isLoading)
         }
+        advancedAudio.playbackContext = { [weak self] in
+            guard let self else { return .init() }
+            return .init(hasItem: self.player?.currentItem != nil, playing: self.isPlaying, loading: self.isLoading)
+        }
+        advancedAudio.onChange = { [weak self] in self?.updateRoute(rebuildCurrent: true) }
+        advancedAudio.onRecovery = { [weak self] in self?.updateRoute(rebuildCurrent: true) }
         updateRenderingPolicy()
         devices.onChange = { [weak self] in self?.devicesChanged() }
         if let session = PlaybackSession.load(from: defaults) {
@@ -355,6 +363,8 @@ final class PlayerModel: ObservableObject {
         policy = SpatialPolicy.resolve(mode: spatialMode, device: device)
         updateRenderingPolicy()
         SpatialShimSetConfiguration(device.id, policy.useShim)
+        advancedAudio.configure(generation: ticket, deviceID: device.id,
+            allowed: policy.allowSpatialization && device.channels == 2)
         let asset = AVURLAsset(url: entry.url)
         timeoutTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(20))
@@ -444,6 +454,8 @@ final class PlayerModel: ObservableObject {
     }
     private func completeLoad(ticket: UInt64) {
         guard generation == ticket, let player else { return }
+        advancedAudio.refresh()
+        guard generation == ticket else { return }
         timeoutTask?.cancel(); timeoutTask = nil
         isLoading = false
         let time = player.currentTime().seconds
@@ -468,6 +480,7 @@ final class PlayerModel: ObservableObject {
     private func invalidatePlayback() {
         SpatialEQReset()
         generation &+= 1; seekSerial &+= 1
+        advancedAudio.invalidate(generation: generation)
         loadTask?.cancel(); loadTask = nil; timeoutTask?.cancel(); timeoutTask = nil
         player?.pause()
         if let timeObserver { player?.removeTimeObserver(timeObserver) }
@@ -483,6 +496,7 @@ final class PlayerModel: ObservableObject {
         shuttingDown = true
         headTracking.shutdown()
         equalizer.shutdown()
+        advancedAudio.shutdown()
         pause()
         invalidatePlayback(); devices.shutdown(); SpatialShimSetConfiguration(0, false)
     }
@@ -507,6 +521,7 @@ final class PlayerModel: ObservableObject {
                 "error": errorMessage ?? "", "errorDetails": errorDetails]
         result.merge(headTracking.diagnosticSnapshot()) { _, new in new }
         result.merge(equalizer.diagnosticSnapshot()) { _, new in new }
+        result.merge(advancedAudio.diagnosticSnapshot()) { _, new in new }
         #if SPATIAL_DIAGNOSTICS
         result["completedItemCount"] = completedItemCount
         #endif
@@ -515,5 +530,6 @@ final class PlayerModel: ObservableObject {
     private func updateRenderingPolicy() {
         headTracking.setRenderingAllowed(policy.allowSpatialization && selectedOutput?.channels == 2)
         equalizer.setRenderingAllowed(policy.allowSpatialization && selectedOutput?.channels == 2)
+        advancedAudio.setDevice(selectedOutput, allowed: policy.allowSpatialization && selectedOutput?.channels == 2)
     }
 }

@@ -1,5 +1,33 @@
 # SpatialUnlock Player 首版验证记录
 
+## 2026-10-24：高级空间音频设置产品化
+
+- 新增高级面板、按实际设备 UID 独立保存设置、0–20 dB／0.1 dB 自定义余量、系统决定／通用／个性化 HRTF，以及实际生效状态。滑块编辑结束或数值提交后重建一次，恢复播放意图和位置；系统默认输出按实际 UID 恢复设置，两项初始均不覆盖系统。
+- 正式 C 模块跟踪当前代次、Apple 组件类型、成功的 bus 0 连接和双声道 Float32 格式，确认 `SpatialMixer → vrq2 → ldnm → cfrk → vrq2` 的唯一完整路径。两个增益在首块输出前成对设置并读回校验，不使用创建顺序推断角色。HRTF 模式请求和实际档案状态分别查询。
+- `Tests/advanced_audio_test.sh` 通过：连续数值、默认参数不变、不完整／多条链路、重初始化、旧代次保留与新代次隔离、并发原生参数更新、超过注册表容量的累计实例回收，以及设置失败恢复。恢复失败或运行中参数失配时，受影响链输出为零并请求用系统配置重建。Swift 检查覆盖偏好校验、强制 0 dB 与系统决定的区别、两 UID 保存、输入精度和取消编辑。
+- 正式模块的 12 组真实 PCM 对照全部通过，空间混音器与 HAL 均逐位相同、最大差为 0：高峰值 5.1 的 0／5／10／15／20／7.3 dB，低电平 5.1，Atmos，APAC 16，EQ 加固定 45° 朝向，以及 AirPods／FIIO 各自保持系统决定的前后对照。采集复用现有素材，不复制音乐；结果见 `Artifacts/route-comparison/advanced-pcm-summary.json`。末次 C 模块修改后另以 FIIO 正式输出复核已保存的 AirPods 20 dB PCM，两处仍逐位一致。
+- 实际 Diagnostics 应用完成 67 步转换、16 步重启恢复、10 步再次重启／重置，共 93 步。覆盖普通耳机与 AirPods、自定义值恢复、系统默认别名、播放／暂停定位、切歌、HRTF 选择、EQ 共存和重置仅影响当前设备。结果位于 `Artifacts/advanced-audio`，日常偏好未被测试数据替换。
+- 真实 PoseBridge quaternion／euler 与 EQ、7.3 dB 余量同时应用，共 68 步通过，姿态渲染错误为 0。原有头追／协议、参数 EQ DSP／解析、播放顺序／会话纯测试通过；原有五组真实播放回归在 FIIO 上共 129 步通过，结果见 `Artifacts/advanced-audio/base-*-result.json`。
+- 独立签名、独立应用标识符的界面副本检查了高级入口、HRTF 菜单、不透明背景、非法数值提示、数值提交前不改配置、提交后单次重建及播放进度／意图保持、滑块无障碍赋值。拖动的松手提交和设备改变取消由同一编辑状态机及单元检查覆盖。
+- 最终 Release 已导出到根目录应用，deep／strict 签名和 Info.plist 校验通过，正常链接正式动态库。确认不含 PCM 探针、测试故障注入、诊断脚本或界面状态文件入口；发布文件哈希及验收汇总见 `Artifacts/advanced-audio/validation-summary.json`。
+
+## 2026-10-24：HAL 差异定位
+
+- 独立探针增加 Apple AudioUnit 逐级输出与参数观察；启用观察器前后的空间混音器和 HAL 样本均逐位相同，正式播放器未修改。
+- 确认链路依次经过空间混音器、前置 `AUVariableEQV2`、`AULoudnessNormalizer`、`AUControlFreak`、后置 `AUVariableEQV2`、播放器音量混音器及 HAL。
+- 两个 VariableEQ 的参数 7 `PreGain (dB)` 在 AirPods 路径为 −20／+20 dB，FIIO 为 0／0 dB。中间两级均启用压缩／真峰值限幅；因输入电平不同而产生不同动态处理。
+- 双向交换两项 PreGain 后，高峰值 5.1 的全部七处输出及 HAL 均与另一设备原始配置逐位相同。Atmos、APAC 16 声道和低电平 5.1 补测同样得到 HAL 最大样本差 0。
+- AULoudnessNormalizer 与 AUControlFreak 分别增加 144／34 帧，播放器 2% 音量在这两级之后。数值、完成的对照与复现命令见 [输出对照实验](ROUTE_COMPARISON.md)；`python3 Tests/hal_chain_analysis.py` 验证已保存的原始数据。
+
+## 2026-10-24：AirPods Max / FIIO PCM 对照
+
+- 新增独立实验探针，保留系统个性化设置，复用正式能力兼容层和朝向实现，EQ 关闭、播放器音量 2%、固定朝向。直接观察本进程空间混音器 PostRender 和 HAL PCM，不加入 tap，不修改产品源码或系统输出设置。
+- 原始 AirPods 路径实际个性化 HRTF 为 1，FIIO 兼容路径为 0，两者 PCM 不相同；各自三次重复抓取可逐样本复现。
+- 只在测试实例中使 HRTF 相同后，低电平 5.1（0°／45°）、Atmos、APAC 16 声道的空间混音器输出均逐样本完全相同。反向关闭 AirPods 实例的个性化，也与原始 FIIO 通用路径完全相同。
+- 默认后级配置的 HAL 输出未达到逐样本相同：低电平稳定段残差约 −144.37 dB，Atmos 与 APAC 16 音乐完整窗口分别约 −24.29／−17.59 dB。后续定位见上节，原始数值保留作为调整前对照。
+- 高峰值对照中两条路径的实际个性化状态均为 0，该组按通用 HRTF 分类。
+- 全部结论、方法、数值与复现命令见 [输出对照实验](ROUTE_COMPARISON.md)，本机证据位于 `Artifacts/route-comparison`。这不替代正式应用完整原生设备回归，也不是传输线或模拟端录波。
+
 ## 2026-10-24：正式参数 EQ
 
 - 新增 UTF-8 参数文本导入、全局单配置持久化、总开关、只读参数表和总响应曲线。Sony MDR-MV1 样例保留 −3.12 dB 前级、8 个 PK、1 个 LSC 和 1 个 HSC；频率和 Q 不做定点取整。失败导入不替换当前配置，文件移动／删除不影响恢复。
@@ -162,9 +190,7 @@ macOS 27 的 `AVAudioMixInputParametersTrackMixID` 配合 `MTAudioProcessingTapC
 - C 检查程序分别链接诊断版和正式版的 `libSpatialShim.dylib`，正常链接、原始能力查询绕过、UInt32 数据大小、边界保护及停用恢复均通过，运行时没有设置 `DYLD_INSERT_LIBRARIES`。
 - 确认 Diagnostics 包含测试入口和 `diagnosticQueueSet`，Release 均不包含。根目录导出的可执行文件与 Release 构建产物一致，动态库依赖为 `@rpath/libSpatialShim.dylib`。
 
-## 已知限制与未完成的硬件验证
+## 已知限制
 
 - 两个用户 APAC 文件在明确关闭空间化时，AVPlayer 返回 AVFoundation `-11800`、底层 OSStatus `1718449215`（`fmt?`）。这一现象也在原始最小播放器中复现。应用显示可恢复错误并保留进度；切回自动／强制模式可继续，未静默忽略关闭设置。
-- AirPods 原生设备回归的 `native-route-result.json` 未通过：脚本假设系统默认输出仍为原生兼容耳机，但当时实际输出已是 3.5 mm。随后 CoreAudio 输出列表中没有可用的 AirPods 输出，不能将此场景记作原生硬件通过。
-- 本轮没有可用的 FIIO 输出，FIIO 与 AirPods 的完整应用回归需在相应输出可用时补做。未改变用户的系统默认输出、蓝牙配置或安装任何 HAL 驱动。
 - `spen`／`spmd` 属于系统私有实现细节，后续 macOS 版本需要重新验证。

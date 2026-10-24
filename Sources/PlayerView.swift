@@ -104,6 +104,7 @@ struct PlayerView: View {
                 .labelsHidden().frame(width: 155).accessibilityIdentifier("spatialMode")
             }
             HeadTrackingControl(model: model.headTracking)
+            AdvancedAudioControl(model: model.advancedAudio)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
     }

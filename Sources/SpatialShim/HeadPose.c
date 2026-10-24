@@ -1,5 +1,6 @@
 #include "HeadPose.h"
 #include "Equalizer.h"
+#include "RenderConfiguration.h"
 #include <AudioToolbox/AudioToolbox.h>
 #include <math.h>
 #include <sched.h>
@@ -145,7 +146,10 @@ static OSStatus beforeRender(void *context, AudioUnitRenderActionFlags *flags,
 static OSStatus poseProperty(AudioUnit unit, AudioUnitPropertyID property, AudioUnitScope scope,
                              AudioUnitElement element, const void *data, UInt32 size) {
     if (property != HeadQuaternion || scope != kAudioUnitScope_Global || element != 0 || size != 16 || !data) {
-        OSStatus result = AudioUnitSetProperty(unit, property, scope, element, data, size);
+        UInt32 hrtf;
+        const void *effective = SpatialRenderHRTFOverride(unit, property, scope, element, data, size, &hrtf) ? &hrtf : data;
+        OSStatus result = AudioUnitSetProperty(unit, property, scope, element, effective, size);
+        SpatialRenderObservedProperty(unit, property, scope, element, data, size, result);
         if (!result && (property == kAudioUnitProperty_StreamFormat || property == kAudioUnitProperty_MaximumFramesPerSlice)) {
             Mixer *m = acquireMixer(unit);
             if (m) { SpatialEQRefresh(m->equalizer, unit); releaseMixer(m); }
@@ -178,6 +182,7 @@ static OSStatus poseProperty(AudioUnit unit, AudioUnitPropertyID property, Audio
 }
 static OSStatus poseInitialize(AudioUnit unit) {
     OSStatus result = AudioUnitInitialize(unit);
+    SpatialRenderUnitInitialized(unit, result);
     if (result) return result;
     Mixer *existing = acquireMixer(unit);
     if (existing) { SpatialEQRefresh(existing->equalizer, unit); releaseMixer(existing); return result; }
@@ -211,19 +216,24 @@ static OSStatus poseInitialize(AudioUnit unit) {
     return result;
 }
 static OSStatus poseDispose(AudioComponentInstance instance) {
+    SpatialRenderWillDispose(instance);
     Mixer *m = NULL;
     for (unsigned i = 0; i < MaxMixers; i++) {
         if (atomic_load_explicit(&mixers[i].unit, memory_order_acquire) == (uintptr_t)instance) {
             m = &mixers[i]; break;
         }
     }
-    if (!m) return AudioComponentInstanceDispose(instance);
+    if (!m) {
+        OSStatus result = AudioComponentInstanceDispose(instance);
+        SpatialRenderDidDispose(instance, result); return result;
+    }
     atomic_store_explicit(&m->closing, true, memory_order_release);
     if (atomic_load_explicit(&m->notified, memory_order_acquire))
         AudioUnitRemoveRenderNotify(instance, beforeRender, m);
     // Only lifecycle teardown waits; render and property callbacks never wait.
     while (atomic_load_explicit(&m->users, memory_order_acquire)) sched_yield();
     OSStatus result = AudioComponentInstanceDispose(instance);
+    SpatialRenderDidDispose(instance, result);
     if (!result) {
         SpatialEQDestroy(m->equalizer); m->equalizer = NULL;
         atomic_fetch_sub_explicit(&mixerCount, 1, memory_order_relaxed);
@@ -246,6 +256,7 @@ static OSStatus poseReset(AudioUnit unit, AudioUnitScope scope, AudioUnitElement
 }
 static OSStatus poseUninitialize(AudioUnit unit) {
     OSStatus result = AudioUnitUninitialize(unit);
+    SpatialRenderUnitUninitialized(unit, result);
     if (!result) {
         Mixer *m = acquireMixer(unit);
         if (m) { SpatialEQResetContext(m->equalizer); releaseMixer(m); }

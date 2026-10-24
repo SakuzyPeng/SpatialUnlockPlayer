@@ -70,6 +70,20 @@ enum DiagnosticRunner {
                         } catch { return false }
                     }
                 case "volume": model.volume = Float(step["value"] as? Double ?? 0.1)
+                case "advancedHeadroomMode":
+                    guard let raw = step["value"] as? String, let mode = AudioHeadroomMode(rawValue: raw),
+                          let uid = model.advancedAudio.deviceUID else { throw error("Invalid advanced headroom mode/output") }
+                    model.advancedAudio.setHeadroomMode(mode, uid: uid)
+                case "advancedHeadroomDB":
+                    guard let uid = model.advancedAudio.deviceUID, let value = step["value"] as? Double,
+                          model.advancedAudio.setHeadroomDB(value, uid: uid) else { throw error("Invalid advanced headroom value/output") }
+                case "advancedHRTF":
+                    guard let raw = step["value"] as? String, let mode = AudioHRTFMode(rawValue: raw),
+                          let uid = model.advancedAudio.deviceUID else { throw error("Invalid advanced HRTF mode/output") }
+                    model.advancedAudio.setHRTFMode(mode, uid: uid)
+                case "advancedReset":
+                    guard let uid = model.advancedAudio.deviceUID else { throw error("Missing advanced output") }
+                    model.advancedAudio.reset(uid: uid)
                 case "eqImport":
                     guard let path = step["path"] as? String else { throw error("Missing EQ path") }
                     if step["expectFailure"] as? Bool == true {
@@ -126,6 +140,16 @@ enum DiagnosticRunner {
         catch { emit(["reportError": error.localizedDescription]) }
         model.pause()
         if ProcessInfo.processInfo.environment["SPATIALUNLOCKPLAYER_TEST_KEEP_OPEN"] != "1" { NSApp.terminate(nil) }
+        else if let path = ProcessInfo.processInfo.environment["SPATIALUNLOCKPLAYER_TEST_LIVE_STATE"] {
+            // Optional UI-test observer, entirely absent from Release. It runs
+            // on the main actor, never on the audio render thread.
+            while !Task.isCancelled {
+                if let data = try? JSONSerialization.data(withJSONObject: model.diagnosticSnapshot(), options: [.sortedKeys]) {
+                    try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+                }
+                try? await Task.sleep(for: .milliseconds(150))
+            }
+        }
     }
 
     private static func until(timeout: Double, condition: () throws -> Bool) async throws {

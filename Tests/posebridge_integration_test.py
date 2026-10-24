@@ -16,9 +16,11 @@ parser.add_argument("--app", type=Path, default=ROOT / "build/Products/Diagnosti
 parser.add_argument("--posebridge", type=Path, default=ROOT.parents[1] / "rust/PoseBridge/target/release/posebridge")
 parser.add_argument("--output", default="BuiltInHeadphoneOutputDevice")
 parser.add_argument("--eq", type=Path, help="Also verify spatial EQ while receiving real OSC poses")
+parser.add_argument("--headroom", type=float, help="Also verify advanced processing headroom during real OSC poses")
 args = parser.parse_args()
 binary = args.app / "Contents/MacOS/SpatialUnlockPlayer"
-artifacts = ROOT / ("Tests/Artifacts/posebridge-integration-eq" if args.eq else "Tests/Artifacts/posebridge-integration")
+artifacts = ROOT / ("Tests/Artifacts/posebridge-integration-advanced" if args.headroom is not None else
+                    "Tests/Artifacts/posebridge-integration-eq" if args.eq else "Tests/Artifacts/posebridge-integration")
 artifacts.mkdir(parents=True, exist_ok=True)
 
 def tone():
@@ -146,6 +148,12 @@ for fmt in ["quaternion", "euler"]:
                 step["expect"].update(eqApplied=True, eqError=0)
             if step.get("action") == "assert" and step.get("expect", {}).get("poseListening") is False and step.get("expect", {}).get("minPoseRestored"):
                 step["expect"].update(eqApplied=True, eqError=0)
+    if args.headroom is not None:
+        steps.insert(5, {"action": "advancedHeadroomDB", "value": args.headroom})
+        for step in steps:
+            if step.get("action") == "assert" and (step.get("expect", {}).get("poseFresh") is True or
+                    step.get("expect", {}).get("minPoseRestored")):
+                step["expect"].update(advancedHeadroomState=2, advancedHeadroomError=0)
     reports.append(run(fmt, steps, port, fmt))
 
 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as occupied:

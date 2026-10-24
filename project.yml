@@ -41,6 +41,12 @@ fileGroups:
   - Tests/playback_integration_test.py
   - Tests/playback_order_test.swift
   - Tests/playback_test.sh
+  - Tests/advanced_audio_test.sh
+  - Tests/advanced_render_test.c
+  - Tests/advanced_settings_test.swift
+  - Tests/advanced_app_test.py
+  - Tests/advanced_pcm_test.py
+  - Tests/ROUTE_COMPARISON.md
   - Tests/shim_test.c
   - Scripts/generate_app_icon.swift
 

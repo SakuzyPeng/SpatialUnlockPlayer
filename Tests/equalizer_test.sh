@@ -3,7 +3,7 @@ set -eu
 cd "${0:A:h:h}"
 mkdir -p build/tests
 xcrun clang -std=c11 -O2 -Wall -Wextra -Werror -dynamiclib \
-  Sources/SpatialShim/SpatialShim.c Sources/SpatialShim/HeadPose.c Sources/SpatialShim/Equalizer.c \
+  Sources/SpatialShim/SpatialShim.c Sources/SpatialShim/HeadPose.c Sources/SpatialShim/Equalizer.c Sources/SpatialShim/RenderConfiguration.c \
   -framework AudioToolbox -framework CoreAudio -o build/tests/libSpatialShim.dylib
 xcrun swiftc -O -swift-version 6 -target arm64-apple-macos27.0 \
   -module-cache-path "$HOME/Library/Developer/Xcode/DerivedData/ModuleCache.noindex" \

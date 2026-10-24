@@ -3,7 +3,7 @@ set -eu
 cd "${0:A:h:h}"
 mkdir -p build/tests/eq-probe
 xcrun clang -std=c11 -O2 -Wall -Wextra -Werror -fblocks -dynamiclib \
-  Sources/SpatialShim/SpatialShim.c Sources/SpatialShim/Equalizer.c Tests/eq_probe_shim.c \
+  Sources/SpatialShim/SpatialShim.c Sources/SpatialShim/Equalizer.c Sources/SpatialShim/RenderConfiguration.c Tests/eq_probe_shim.c \
   -framework AudioToolbox -framework CoreAudio \
   -install_name @rpath/libEQProbe.dylib -o build/tests/eq-probe/libEQProbe.dylib
 xcrun clang -O2 -Wall -Wextra -fobjc-arc -fblocks Tests/eq_probe.m \

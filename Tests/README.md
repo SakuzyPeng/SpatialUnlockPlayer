@@ -2,6 +2,28 @@
 
 产品没有测试依赖。开发验证使用本机现有 Python、ffmpeg 和测试媒体；不复制用户的音乐文件。
 
+## 高级空间音频设置
+
+```sh
+zsh Tests/advanced_audio_test.sh
+zsh Tests/route_probe_build.sh
+python3 Tests/advanced_pcm_test.py --reuse
+python3 Tests/advanced_app_test.py
+```
+
+第一条验证真实 AudioUnit 生命周期、连接拓扑识别、0–20 dB 配置、回退及静音保护、旧代次隔离和并发原生参数写入，同时验证按 UID 保存、数值校验及拖动跨设备取消。控制与故障测试使用公开 Apple EQ 作为节点夹具；私有 DSP 的实际行为由第二／三条的真实 AVPlayer／HAL 采集验证。`--reuse` 仅复用已保存且通过数据完整性检查的捕获。
+
+PCM 测试需要本机已有素材、AirPods 和 FIIO 输出，检查 0／5／10／15／20／7.3 dB、高低电平、Atmos、APAC 16、EQ 与固定 45° 朝向，以及两项系统决定时输出不变。`route_comparison.py --production` 使用正式拓扑配置模块；未指定时仍可使用早期研究控制作为参考。
+
+应用测试使用 Diagnostics 构建及独立 Regression 偏好域，覆盖两台输出设备、切换／暂停定位、重启、系统默认输出别名、恢复系统设置和 EQ 共存。`--app`、`--fiio`、`--airpods` 可指定当前实际路径／UID。与真实 PoseBridge 同时验证可运行：
+
+```sh
+python3 Tests/posebridge_integration_test.py --output DEVICE_UID \
+  --eq 'Tests/Fixtures/Sony MDR-MV1 ParametricEq.txt' --headroom 7.3
+```
+
+Diagnostics 的 `advancedHeadroomMode`、`advancedHeadroomDB`、`advancedHRTF`、`advancedReset` 对应正式界面操作。独立界面检查可设置 `SPATIALUNLOCKPLAYER_TEST_KEEP_OPEN=1` 和 `SPATIALUNLOCKPLAYER_TEST_LIVE_STATE`：后者只在 Diagnostics 主线程写入当前状态，Release 不包含该入口。
+
 ## 正式参数 EQ
 
 ```sh
@@ -30,6 +52,14 @@ python3 Tests/eq_probe_test.py --analyze-only
 用 `--only pcm51-on-notify` 等名称选择场景，`--skip-build` 复用小型探针二进制。生成或复用短 PCM，不复制 APAC／Atmos；音乐路径从已有 `Artifacts/smoke.json` 和 `regression.json` 读取，缺少这些本机素材时跳过对应场景。所有生成物位于 `build/tests/eq-probe` 与 `Artifacts/eq-probe`。
 
 `summary.json` 区分处理验证、已知格式失败和仅观察格式的场景，不能把整个场景数称为 EQ 全部通过。多声道音乐跨时间片的响度不同，不使用它们的前后时段电平差证明滤波频响；精确频响和 HAL 传递验证使用稳定测试信号。详细结论及混合总线 tap 的头追限制见 [验证记录](VALIDATION.md)。
+
+## AirPods 与普通耳机 PCM 对照
+
+`zsh Tests/route_probe_build.sh` 构建独立抓取工具；`build/tests/route-probe/route-probe --devices` 列出当前输出。使用 `python3 Tests/route_comparison.py capture LABEL DEVICE_UID native|shim` 分别抓取原生和兼容路径，再用 `compare LABEL_A LABEL_B` 比较空间混音器 PCM；加 `--stage hal-output` 比较本进程 HAL 输出。Python 分析需要 NumPy 和 SciPy。
+
+实验保留系统个性化设置，禁用测试进程的 EQ，固定朝向，播放器音量为 2%。`--hrtf 0/1/2` 只改变测试混音器实例的模式；必须同时检查报告中的 `personalizedActive`。采集会播放低音量测试声音，不录制输入，PCM 仅在播放停止后写盘。详细步骤与已完成对照的结果见 [输出对照实验](ROUTE_COMPARISON.md)。
+
+`--trace-units` 增加中间 Apple AudioUnit 的只读观察；`--headroom-db 0|20` 仅在测试进程中控制动态处理前后的两项 PreGain，用于因果对照，并自动启用逐级观察。已有本机数据可用 `python3 Tests/hal_chain_analysis.py` 重新验证：观察器不改变输出，交换两项参数可以逐位交换 HAL 结果。
 
 ## PoseBridge OSC 与渲染
 
