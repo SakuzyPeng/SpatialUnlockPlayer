@@ -50,7 +50,7 @@ flowchart LR
 | 空间混音器 PCM（同 HRTF、同朝向） | 基准 | 逐位相同 | 逐位相同 |
 | HAL PCM | 基准 | 不同 | 逐位相同 |
 
-结论只覆盖本机、这个系统版本、这些设备和素材；比较的是进程内交给 HAL 的 PCM，不是传输线上的数据或耳机的声学输出。方法、数值与复现命令见[输出对照实验](Tests/ROUTE_COMPARISON.md)。
+结论覆盖本机、这个系统版本、这些设备和素材，指空间混音器与本进程 HAL 一致。后续同步抓取发现，即使 HAL 相同，两设备的 USB PCM 仍不同：AirPods 在 HAL 之后约衰减 12 dB，且存在量化差异；因此不能外推为传输载荷或耳机声学输出相同。方法与数值见[进程内对照](Tests/ROUTE_COMPARISON.md)和[USB PCM 对照](Tests/USB_AUDIO_COMPARISON.md)。
 
 ## 能用它做什么
 

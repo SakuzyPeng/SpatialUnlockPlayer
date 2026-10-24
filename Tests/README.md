@@ -79,6 +79,10 @@ python3 Tests/eq_probe_test.py --analyze-only
 
 `--trace-units` 增加中间 Apple AudioUnit 的只读观察；`--headroom-db 0|20` 仅在测试进程中控制动态处理前后的两项 PreGain，用于因果对照，并自动启用逐级观察。已有本机数据可用 `python3 Tests/hal_chain_analysis.py` 重新验证：观察器不改变输出，交换两项参数可以逐位交换 HAL 结果。
 
+## USB PCM 同步对照
+
+USB 传输层对照另见 [USB PCM 实验](USB_AUDIO_COMPARISON.md)。`zsh Tests/usb_audio_probe_build.sh` 构建同步采集与设备元数据工具；`python3 Tests/usb_audio_analysis_test.py` 检查 PCM／描述符解析和差分判定。已有 16 次有效采集可用 `python3 Tests/usb_audio_analysis.py --completed-suite` 离线重算。该实验确认 HAL 一致时，AirPods／FIIO 的 USB PCM 仍存在约 12 dB 幅度差和量化差异；所有采集仅在测试工具中，正式版本不含抓取入口。
+
 ## PoseBridge OSC 与渲染
 
 在仓库根目录运行纯协议与实际 Apple Audio Unit 检查：
