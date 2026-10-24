@@ -26,6 +26,8 @@ settings:
     MODULE_CACHE_DIR: "$(USER_LIBRARY_DIR)/Developer/Xcode/DerivedData/ModuleCache.noindex"
     CONFIGURATION_BUILD_DIR: "$(SRCROOT)/build/Products/$(CONFIGURATION)"
   configs:
+    Release:
+      CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
     Diagnostics:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SPATIAL_DIAGNOSTICS"
       GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) SPATIAL_DIAGNOSTICS=1"
@@ -34,6 +36,9 @@ fileGroups:
   - project.yml
   - build.sh
   - README.md
+  - LICENSE
+  - THIRD_PARTY_NOTICES.md
+  - LICENSES
   - Resources/Info.plist
   - Tests/README.md
   - Tests/VALIDATION.md
@@ -76,6 +81,8 @@ targets:
       - path: Resources
         excludes:
           - Info.plist
+      - path: LICENSE
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: SpatialUnlock Player

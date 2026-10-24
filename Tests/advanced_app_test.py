@@ -10,10 +10,12 @@ ART = ROOT / 'Tests/Artifacts/advanced-audio'
 ART.mkdir(parents=True, exist_ok=True)
 parser = argparse.ArgumentParser()
 parser.add_argument('--app', type=Path, default=ROOT / 'build/Products/Diagnostics/SpatialUnlock Player.app')
-parser.add_argument('--fiio', default='FIIO_OUTPUT_UID')
-parser.add_argument('--airpods', default='AIRPODS_OUTPUT_UID')
+parser.add_argument('--fiio', required=True, help='UID of the ordinary stereo DAC/headphone output')
+parser.add_argument('--airpods', required=True, help='UID of the native spatial-audio output')
 args = parser.parse_args()
 binary = args.app / 'Contents/MacOS/SpatialUnlockPlayer'
+if not binary.is_file():
+    parser.error('Build the Diagnostics app first, or pass --app APP_PATH')
 
 
 def a(action, **kw): return dict(action=action, **kw)

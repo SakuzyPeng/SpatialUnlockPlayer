@@ -8,9 +8,10 @@ from route_comparison import ART, capture, compare
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--reuse', action='store_true', help='Analyze already completed captures when available')
+parser.add_argument('--fiio', required=True, help='UID of the ordinary stereo DAC/headphone output')
+parser.add_argument('--airpods', required=True, help='UID of the native spatial-audio output')
 args = parser.parse_args()
-devices = [('airpods','AIRPODS_OUTPUT_UID','native'),
-           ('fiio','FIIO_OUTPUT_UID','shim')]
+devices = [('airpods',args.airpods,'native'), ('fiio',args.fiio,'shim')]
 result = {}
 
 
@@ -18,6 +19,8 @@ def take(label, uid, route, media, db=None, seek=0, duration=8, yaw=0, productio
     path = ART / (label + '.json')
     if args.reuse and path.exists():
         r = json.loads(path.read_text())
+        if r.get('device', {}).get('uid') != uid:
+            raise ValueError(f'{label}: cached capture belongs to another output; rerun without --reuse')
     else:
         r = capture(label,uid,route,media=media,seek=seek,duration=duration,yaw=yaw,hrtf=hrtf,
                     headroom_db=db,production=production)

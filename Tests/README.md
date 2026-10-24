@@ -2,20 +2,22 @@
 
 产品没有测试依赖。开发验证使用本机现有 Python、ffmpeg 和测试媒体；不复制用户的音乐文件。
 
+播放列表回归缺少小型素材时会自动生成静音 PCM 和测试图案视频，也可先运行 `python3 Tests/generate_media.py`。生成物与本机测试配置保存在被 Git 忽略的 `Tests/Artifacts/`；不要提交个人媒体路径或设备 UID。Sony EQ 测试数据的来源与许可见 [Fixtures/README.md](Fixtures/README.md)。
+
 ## 高级空间音频设置
 
 ```sh
 zsh Tests/advanced_audio_test.sh
 zsh Tests/route_probe_build.sh
-python3 Tests/advanced_pcm_test.py --reuse
-python3 Tests/advanced_app_test.py
+python3 Tests/advanced_pcm_test.py --fiio "$FIIO_UID" --airpods "$AIRPODS_UID" --reuse
+python3 Tests/advanced_app_test.py --fiio "$FIIO_UID" --airpods "$AIRPODS_UID"
 ```
 
-第一条验证真实 AudioUnit 生命周期、连接拓扑识别、0–20 dB 配置、回退及静音保护、旧代次隔离和并发原生参数写入，同时验证按 UID 保存、数值校验及拖动跨设备取消。控制与故障测试使用公开 Apple EQ 作为节点夹具；私有 DSP 的实际行为由第二／三条的真实 AVPlayer／HAL 采集验证。`--reuse` 仅复用已保存且通过数据完整性检查的捕获。
+第一条验证真实 AudioUnit 生命周期、连接拓扑识别、0–20 dB 配置、回退及静音保护、旧代次隔离和并发原生参数写入，同时验证按 UID 保存、数值校验及拖动跨设备取消。控制与故障测试使用公开 Apple EQ 作为节点夹具；私有 DSP 的实际行为由第二／三条的真实 AVPlayer／HAL 采集验证。`--reuse` 仅复用输出 UID 匹配且通过数据完整性检查的已有捕获。
 
 PCM 测试需要本机已有素材、AirPods 和 FIIO 输出，检查 0／5／10／15／20／7.3 dB、高低电平、Atmos、APAC 16、EQ 与固定 45° 朝向，以及两项系统决定时输出不变。`route_comparison.py --production` 使用正式拓扑配置模块；未指定时仍可使用早期研究控制作为参考。
 
-应用测试使用 Diagnostics 构建及独立 Regression 偏好域，覆盖两台输出设备、切换／暂停定位、重启、系统默认输出别名、恢复系统设置和 EQ 共存。`--app`、`--fiio`、`--airpods` 可指定当前实际路径／UID。与真实 PoseBridge 同时验证可运行：
+应用测试使用 Diagnostics 构建及独立 Regression 偏好域，覆盖两台输出设备、切换／暂停定位、重启、系统默认输出别名、恢复系统设置和 EQ 共存。先用 `build/tests/route-probe/route-probe --devices` 查看设备，再将普通双声道 DAC／耳机和原生空间音频设备的 UID 分别设为本机 shell 变量 `FIIO_UID`、`AIRPODS_UID`；两条脚本均要求显式传入这两个参数。`--app` 可指定 Diagnostics 应用路径。与真实 PoseBridge 同时验证可运行：
 
 ```sh
 python3 Tests/posebridge_integration_test.py --output DEVICE_UID \
@@ -28,13 +30,13 @@ Diagnostics 的 `advancedHeadroomMode`、`advancedHeadroomDB`、`advancedHRTF`�
 
 ```sh
 zsh Tests/equalizer_test.sh
-python3 Tests/equalizer_playback_test.py
+python3 Tests/equalizer_playback_test.py --output DEVICE_UID
 python3 Tests/posebridge_integration_test.py --eq 'Tests/Fixtures/Sony MDR-MV1 ParametricEq.txt'
 ```
 
 首条运行配置解析／事务性导入／持久化测试，并使用本机已有 NumPy 分析正式 C DSP 的脉冲响应。参考使用独立的模拟原型加双线性变换，不复用产品 biquad 递推；覆盖 44.1／48／96 kHz、PK／LSC／HSC／完整 Sony 曲线、两种 PCM 布局、声道隔离、重复渲染、reset、静音尾音、整体旁路、20 ms 淡化、快速更新和并发配置／实例生命周期。
 
-第二条须先构建 Diagnostics 并具备已有测试媒体；使用前一条由正式 Swift 解析器生成的 Sony 参数，验证正常链接的正式 EQ 处理能到达本进程 HAL 输出，随后运行实际应用的 EQ 开关、定位、切歌、模式、设备恢复、导入失败和重启恢复场景。第三条用真实 PoseBridge 模拟器验证 EQ 与外部头追同时工作，关闭外部头追后 EQ 继续生效；结果单独写入 `Artifacts/posebridge-integration-eq`。
+第二条须先构建 Diagnostics 并具备已有测试媒体；`--output` 指定实际双声道输出 UID，省略时使用内置 3.5 mm 耳机口；`--eq` 可指定同一 Sony 测试夹具的其他副本。使用前一条由正式 Swift 解析器生成的 Sony 参数，验证正常链接的正式 EQ 处理能到达本进程 HAL 输出，随后运行实际应用的 EQ 开关、定位、切歌、模式、设备恢复、导入失败和重启恢复场景。第三条用真实 PoseBridge 模拟器验证 EQ 与外部头追同时工作，关闭外部头追后 EQ 继续生效；结果单独写入 `Artifacts/posebridge-integration-eq`。
 
 结果保存于 `Artifacts/equalizer`。应用集成测试共用独立 Regression 偏好域，与其他播放、持久化、PoseBridge 脚本须顺序运行；测试不改变日常列表和 EQ 设置。纯 DSP 检查和 Xcode 构建复用已有目录／共享模块缓存。
 
@@ -138,7 +140,7 @@ python3 Tests/persistence_test.py
 python3 Tests/playback_integration_test.py
 ```
 
-持久化脚本使用已有视频、短 PCM 测试素材及本机 APAC 文件，通过多个独立进程验证旧单列表迁移、列表顺序、重复文件、当前曲目、暂停位置、移除、文件暂时不可用，以及多列表、空列表、名称和全局播放模式恢复。清空后仍保留列表身份和名称；删除最后一份列表会留下空的“默认列表”。
+持久化脚本使用小型视频、短 PCM 和自动生成的 40 秒静音 WAV，通过多个独立进程验证旧单列表迁移、列表顺序、重复文件、当前曲目、暂停位置、移除、文件暂时不可用，以及多列表、空列表、名称和全局播放模式恢复。可用 `--media /path/to/media` 额外验证至少 31 秒的本机 APAC 或其他媒体，用 `--output DEVICE_UID` 指定输出，用 `--app /path/to/Diagnostics.app` 指定诊断应用；默认使用 `build/Products/Diagnostics/SpatialUnlock Player.app`、系统默认输出，播放全程静音。清空后仍保留列表身份和名称；删除最后一份列表会留下空的“默认列表”。
 
 播放集成脚本使用实际 AVPlayer 验证自然结束后的四种模式、随机历史、浏览其他列表时自动续播、NSItemProvider 导入期间切换列表、快速切换后的旧回调拒绝、删除列表及失败后暂停。复用小型视频和短音频，不复制用户音乐。两个脚本均使用独立的 `local.sakuzy.SpatialUnlockPlayer.Regression` 偏好域，须顺序运行，不改动日常使用的列表和设置。
 

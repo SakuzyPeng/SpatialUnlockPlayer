@@ -6,7 +6,7 @@
 
 ## 使用
 
-双击本目录中的 `SpatialUnlock Player.app`。
+先按下方说明构建，再双击生成的 `SpatialUnlock Player.app`。源码仓库不包含编译后的应用。
 
 - `⌘O` 打开一个或多个音视频文件，也可以把文件拖入窗口，或在 Finder 中选择用 SpatialUnlock Player 打开。
 - 侧栏可新建、重命名、删除和切换命名播放列表。切换列表用于浏览和管理，双击条目或选中后按 Return 才切换播放；点击“正在播放：列表名”可返回当前播放列表。
@@ -102,13 +102,15 @@ open SpatialUnlockPlayer.xcodeproj
 zsh build.sh
 ```
 
-`build.sh` 自动生成工程、调用 `xcodebuild` 构建 Release，然后将应用导出到项目根目录的 `SpatialUnlock Player.app`，可执行文件为 `SpatialUnlockPlayer`。`zsh build.sh --debug` 可导出 Debug 版本。
+`build.sh` 自动生成工程、调用 `xcodebuild` 构建 Release，然后将应用导出到项目根目录的 `SpatialUnlock Player.app`，可执行文件为 `SpatialUnlockPlayer`。Release 保留 ad hoc 签名，剥离本机构建路径和局部调试符号，不注入调试权限，并在应用内附带 MIT 许可证。导出时使用系统 Python 3 标准库检查签名、权限、构建路径和诊断入口。`zsh build.sh --debug` 可导出 Debug 版本。
 
-各配置的 Xcode 构建产物位于 `build/Products`，根目录只保留当前导出版本。构建使用 Xcode 默认的 DerivedData 位置和系统共享模块缓存；仓库内不创建 DerivedData 或模块缓存目录，也没有第三方包依赖。
+各配置的 Xcode 构建产物位于 `build/Products`，保留本地调试信息；用于分享的版本为根目录导出的应用。构建使用 Xcode 默认的 DerivedData 位置和系统共享模块缓存；仓库内不创建 DerivedData 或模块缓存目录，也没有第三方包依赖。
 
 应用标识符沿用 `local.sakuzy.SpatialPlayer`，以继续使用更名前保存的播放列表和设置。
 
 `libSpatialShim.dylib` 放在应用的 `Contents/Frameworks` 中，通过 `@rpath` 正常链接，在启动期加载。双击启动不需要环境变量。Xcode 使用 ad hoc 签名；不开启 App Sandbox / Hardened Runtime，未进行商店发布或公证。
+
+下载的 ad hoc 应用可能受到 Gatekeeper 拦截；确认来源后，可按 macOS 提示在“系统设置 → 隐私与安全性”中允许打开，也可自行构建。`codesign --verify` 检查包完整性，不代表已通过 Apple 公证。
 
 ### 应用图标
 
@@ -136,3 +138,7 @@ zsh build.sh --diagnostics
 ```
 
 Diagnostics 配置为 Swift 与 C 两个 target 同时启用 `SPATIAL_DIAGNOSTICS`，增加只读 AudioQueue 属性记录及本地回归脚本入口，不修改队列参数或音频样本。PoseBridge 的姿态接入属于正式功能，两种构建均包含。详细用法见 [测试说明](Tests/README.md)。交付前重新运行不带参数的 `build.sh`，导出不含测试入口与队列诊断钩子的 Release 版本。
+
+## 许可证
+
+本项目采用 [MIT 许可证](LICENSE)。Sony MDR-MV1 参数 EQ 测试数据来自 [AutoEq](https://github.com/jaakkopasanen/AutoEq)，版权、许可和来源说明见 [第三方声明](THIRD_PARTY_NOTICES.md) 与[测试数据说明](Tests/Fixtures/README.md)。

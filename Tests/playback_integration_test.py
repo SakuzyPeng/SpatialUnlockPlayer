@@ -2,6 +2,7 @@
 """Real AVPlayer completion, list ownership, asynchronous import, and shuffle history."""
 import json
 from persistence_test import ARTIFACTS, VIDEO, check, ready, run
+from generate_media import ensure_playback_media
 
 
 def action(operation, **values):
@@ -13,7 +14,7 @@ def report(name):
 
 
 def main():
-    assert VIDEO.is_file()
+    ensure_playback_media()
     setup = [action("volume", value=0), action("mode", value="off")]
     run("playback-modes", setup + [
         action("add", paths=[str(VIDEO)] * 4), ready(),

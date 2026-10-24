@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """Exercise saved sessions across real diagnostic app launches, with isolated preferences."""
 import json
+import argparse
 import os
 from pathlib import Path
 import plistlib
 import shutil
 import subprocess
 import uuid
+from generate_media import ensure_playback_media
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = ROOT / "Tests/Artifacts"
-APP = ROOT / "SpatialUnlock Player.app/Contents/MacOS/SpatialUnlockPlayer"
+APP = ROOT / "build/Products/Diagnostics/SpatialUnlock Player.app/Contents/MacOS/SpatialUnlockPlayer"
 DOMAIN = "local.sakuzy.SpatialUnlockPlayer.Regression"
 VIDEO = ARTIFACTS / "video-test.mp4"
-APAC = Path("Tests/Artifacts/persistence-test.m4a")
+MEDIA = ARTIFACTS / "persistence-test.wav"
+OUTPUT = "system"
 MISSING = ARTIFACTS / "persistence-removable.wav"
 OFFLINE = MISSING.with_suffix(".offline")
 
@@ -55,7 +58,21 @@ def entries(session, index=0):
 
 
 def main():
-    assert VIDEO.is_file() and APAC.is_file(), "Build the existing media fixtures first."
+    global APP, MEDIA, OUTPUT
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--app", type=Path, default=APP.parents[2], help="Diagnostics .app path")
+    parser.add_argument("--media", type=Path, help="Optional existing media with at least 31 seconds of duration")
+    parser.add_argument("--output", default="system", help="Output UID, or system (default); all playback is muted")
+    args = parser.parse_args()
+    APP = args.app.resolve() / "Contents/MacOS/SpatialUnlockPlayer"
+    if not APP.is_file():
+        parser.error("Build the Diagnostics app first, or pass --app APP_PATH")
+    if args.media is not None:
+        MEDIA = args.media.resolve()
+        if not MEDIA.is_file():
+            parser.error("The --media file does not exist")
+    OUTPUT = args.output
+    ensure_playback_media()
     shutil.copyfile(ARTIFACTS / "short-a.wav", MISSING)
     try:
         exercise()
@@ -76,9 +93,9 @@ def exercise():
     assert migrated["currentID"].lower() == legacy["currentID"]
 
     first = run("save", [
-        {"action": "output", "value": "BuiltInHeadphoneOutputDevice"},
+        {"action": "output", "value": OUTPUT},
         {"action": "volume", "value": 0},
-        {"action": "add", "paths": list(map(str, [VIDEO, APAC, VIDEO, MISSING]))},
+        {"action": "add", "paths": list(map(str, [VIDEO, MEDIA, VIDEO, MISSING]))},
         {"action": "select", "index": 1, "autoplay": False}, ready(),
         {"action": "seek", "value": 30}, ready(),
         check(playlistCount=4, wantsToPlay=False, playing=False, minPosition=29.9, maxPosition=30.1),
@@ -91,7 +108,7 @@ def exercise():
 
     removed = run("restore-remove", [
         ready(), {"action": "wait", "seconds": 0.5},
-        check(playlistCount=4, fileContains=APAC.name, wantsToPlay=False, playing=False,
+        check(playlistCount=4, fileContains=MEDIA.name, wantsToPlay=False, playing=False,
               minPosition=29.9, maxPosition=30.1),
         {"action": "remove", "indices": [0]}, check(playlistCount=3),
     ])
@@ -124,7 +141,7 @@ def exercise():
 
     multiple = run("multiple-save", [
         {"action": "createPlaylist", "name": "音乐"},
-        {"action": "add", "paths": [str(VIDEO), str(APAC)]},
+        {"action": "add", "paths": [str(VIDEO), str(MEDIA)]},
         {"action": "select", "index": 1, "autoplay": False}, ready(),
         {"action": "seek", "value": 12}, ready(),
         {"action": "playbackMode", "value": "shuffle"},

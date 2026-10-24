@@ -38,6 +38,19 @@ built_app="$PWD/build/Products/$configuration/SpatialUnlock Player.app"
 app="$PWD/SpatialUnlock Player.app"
 rm -rf "$app"
 /usr/bin/ditto "$built_app" "$app"
+if [[ "$configuration" == Release ]]; then
+  # Finish mutations before signing, including the embedded interposing library.
+  # Xcode's ordinary build products retain their symbols for local debugging.
+  library="$app/Contents/Frameworks/libSpatialShim.dylib"
+  /usr/bin/codesign --remove-signature "$app"
+  /usr/bin/codesign --remove-signature "$library"
+  /usr/bin/xcrun strip -S -x "$library" "$app/Contents/MacOS/SpatialUnlockPlayer"
+  /usr/bin/codesign --force --sign - "$library"
+  /usr/bin/codesign --force --sign - "$app"
+fi
 /usr/bin/codesign --verify --deep --strict "$app"
 /usr/bin/plutil -lint "$app/Contents/Info.plist"
+if [[ "$configuration" == Release ]]; then
+  /usr/bin/python3 Scripts/check_release.py "$app"
+fi
 print "Built $app (configuration=$configuration)"

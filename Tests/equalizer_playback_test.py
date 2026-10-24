@@ -11,7 +11,12 @@ ART = ROOT / "Tests/Artifacts/equalizer"
 ART.mkdir(parents=True, exist_ok=True)
 parser = argparse.ArgumentParser()
 parser.add_argument("--app-only", action="store_true", help="Recheck app state/persistence without repeating HAL measurements")
+parser.add_argument("--eq", type=Path, default=ROOT / "Tests/Fixtures/Sony MDR-MV1 ParametricEq.txt",
+                    help="Path to a copy of the Sony MDR-MV1 AutoEq test fixture")
+parser.add_argument("--output", default="BuiltInHeadphoneOutputDevice", help="UID of the stereo output under test")
 args = parser.parse_args()
+if not args.eq.is_file():
+    parser.error("The --eq file does not exist")
 env = dict(os.environ)
 env.pop("DYLD_INSERT_LIBRARIES", None)
 env["SPATIALEQ_PROBE_PRESET"] = str(ART / "sony-normalized.json")
@@ -58,7 +63,7 @@ for name, path in (media.items() if not args.app_only else []):
         key = name + "-" + mode + "-production-sony"
         destination = ART / (key + ".json")
         with (ART / (key + ".log")).open("w") as log:
-            subprocess.run([str(ROOT / "build/tests/eq-probe/eq-probe"), str(path), "BuiltInHeadphoneOutputDevice", mode,
+            subprocess.run([str(ROOT / "build/tests/eq-probe/eq-probe"), str(path), args.output, mode,
                 "production-sony", "30" if name in ("apac16", "apac24", "atmos") else "0", str(destination)],
                 cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=30, check=True)
         report = json.loads(destination.read_text())
@@ -86,9 +91,7 @@ for name, path in (media.items() if not args.app_only else []):
 binary = ROOT / "build/Products/Diagnostics/SpatialUnlock Player.app/Contents/MacOS/SpatialUnlockPlayer"
 bad = ART / "invalid.txt"
 bad.write_text("Filter 1: ON UNKNOWN Fc 100 Hz Gain 1 dB Q 1\n")
-sony = Path("Tests/Fixtures/Sony MDR-MV1 ParametricEq.txt")
-if not sony.exists():
-    sony = ROOT / "Tests/Fixtures/Sony MDR-MV1 ParametricEq.txt"
+sony = args.eq.resolve()
 
 
 def app_case(name, steps, restore=False):
@@ -110,7 +113,7 @@ def app_case(name, steps, restore=False):
 
 
 app_case("app-eq-transitions", [
-    {"action": "output", "value": "BuiltInHeadphoneOutputDevice"},
+    {"action": "output", "value": args.output},
     {"action": "mode", "value": "headphones"}, {"action": "volume", "value": .02},
     {"action": "eqImport", "path": str(sony)},
     {"action": "assert", "expect": {"eqEnabled": True, "eqFilterCount": 10, "eqPreamp": -3.12}},
@@ -128,7 +131,7 @@ app_case("app-eq-transitions", [
     {"action": "assert", "expect": {"eqEnabled": True, "eqApplied": False}},
     {"action": "mode", "value": "headphones"}, {"action": "awaitReady"},
     {"action": "awaitState", "expect": {"eqApplied": True, "eqError": 0}},
-    {"action": "deviceMissing", "value": "BuiltInHeadphoneOutputDevice"},
+    {"action": "deviceMissing", "value": args.output},
     {"action": "assert", "expect": {"playing": False, "eqApplied": False}},
     {"action": "refreshDevices"}, {"action": "awaitReady"}, {"action": "play"},
     {"action": "awaitState", "expect": {"eqApplied": True, "eqError": 0}}, {"action": "pause"}
